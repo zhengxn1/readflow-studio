@@ -1,0 +1,17 @@
+{
+  "name": "readflow-studio",
+  "version": "1.0.0",
+  "description": "Obsidian 阅读知识库到可编辑剪映草稿的自动化工作流",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "init": "node scripts/init.mjs",
+    "check": "node scripts/check.mjs",
+    "workflow:prepare": "node scripts/prepare-jianying-workflow.mjs",
+    "workflow:draft": "node scripts/create-jianying-draft.mjs",
+    "capcut:setup": "node scripts/setup-capcut-mate.mjs",
+    "capcut:start": "node scripts/start-capcut-mate.mjs",
+    "test:workflow": "node --test scripts/tests/workflow-*.test.mjs",
+    "check:public": "node scripts/check-public-release.mjs"
+  }
+}

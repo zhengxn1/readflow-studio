@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "baseCanvas": { "width": 1080, "height": 1920 },
+  "aspects": {
+    "3:4": { "width": 720, "height": 960 },
+    "9:16": { "width": 1080, "height": 1920 },
+    "4:3": { "width": 960, "height": 720 }
+  },
+  "cozeStyle": {
+    "cover": {
+      "scale": 0.2,
+      "transformX": -846,
+      "transformY": -119
+    },
+    "introText": {
+      "font": "思源粗宋",
+      "fontSize": 12,
+      "textColor": "#ffffff",
+      "transformX": 0,
+      "transformY": -80,
+      "bold": true
+    },
+    "bookTitle": {
+      "font": "思源粗宋",
+      "fontSize": 16,
+      "textColor": "#ffffff",
+      "transformX": 0,
+      "transformY": 719,
+      "transformYRatio": 0.49,
+      "bold": true
+    },
+    "author": {
+      "font": "研宋体",
+      "fontSize": 10,
+      "textColor": "#ffbf17",
+      "transformX": 0,
+      "transformY": 450,
+      "transformYRatio": 0.36,
+      "bold": false
+    },
+    "bodyCaption": {
+      "font": "研宋体",
+      "fontSize": 11,
+      "textColor": "#ffffff",
+      "transformX": 0,
+      "transformY": -728,
+      "transformYRatio": -0.38,
+      "bold": false,
+      "hasShadow": true
+    },
+    "englishCaption": {
+      "font": "Arial",
+      "fontSize": 5,
+      "textColor": "#ffffff",
+      "transformX": 0,
+      "transformY": -840,
+      "transformYRatio": -0.5,
+      "bold": false,
+      "hasShadow": true
+    },
+    "nickname": {
+      "font": "仓耳力士",
+      "fontSize": 8,
+      "textColor": "#ffffff",
+      "transformX": 0,
+      "transformY": -1153,
+      "bold": false
+    },
+    "sourceNote": {
+      "font": "后现代体",
+      "fontSize": 6,
+      "textColor": "#ffffff",
+      "transformX": 0,
+      "transformY": -1304,
+      "bold": false
+    }
+  }
+}

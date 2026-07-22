@@ -1,0 +1,88 @@
+# Local credentials and generated workspace state
+.env
+.env.*
+!.env.example
+.readflow.local.json
+.readflow-state.json
+# 旧版名称仅用于自动迁移，仍禁止提交。
+.book-video.local.json
+.book-automation-state.json
+.uploads/
+
+# Local agent context and temporary analysis
+.ai/
+.agents/
+skills-lock.json
+
+# Local candidate data
+data/
+
+# User-owned or third-party media must stay local
+assets/
+*.mp3
+*.wav
+*.m4a
+*.aac
+*.flac
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.srt
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.gif
+*.zip
+
+# Local episode outputs
+episodes/*
+!episodes/README.md
+
+# Jianying/CapCut drafts and render output
+drafts/
+renders/
+output/
+draft_content.json
+draft_meta_info.json
+
+# Local tools and plugin state
+.tools/
+tmp/
+docs/superpowers/
+
+# Old Book Video / Whisper / HyperFrames implementation kept locally only
+scripts/create-body-timings.mjs
+scripts/create-episode-preview.mjs
+scripts/download-whisper-model.mjs
+scripts/process-voiceover.mjs
+scripts/record-book-candidates.mjs
+scripts/render-episode-final.mjs
+scripts/validate-script.mjs
+scripts/lib/body-timings.mjs
+scripts/lib/env.mjs
+scripts/lib/episode-slug.mjs
+scripts/lib/script-policy.mjs
+scripts/lib/script-version.mjs
+scripts/lib/title-normalization.mjs
+scripts/lib/weread-request.mjs
+scripts/tests/smoke-timing-fallback.mjs
+scripts/tests/test-body-timings.mjs
+scripts/tests/test-env.mjs
+scripts/tests/test-title-normalization.mjs
+templates/shared-video-template/
+
+# Dependencies and build output
+node_modules/
+.venv/
+__pycache__/
+dist/
+build/
+coverage/
+.cache/
+.parcel-cache/
+*.log
+
+# OS/editor noise
+.DS_Store

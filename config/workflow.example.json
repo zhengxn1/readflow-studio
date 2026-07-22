@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 2,
+  "product": "ReadFlow Studio",
+  "obsidian": {
+    "vaultPath": "/path/to/Obsidian Vault",
+    "wereadFolder": "00_INPUT/微信读书"
+  },
+  "materials": {
+    "root": "/path/to/视频剪辑",
+    "bgm": "背景音乐.mp3",
+    "introVideo": "今天我们要分享的是.mov",
+    "introVoice": "今天我们分享的是.mp3",
+    "mechanicalSfx": "机械音效.mp3",
+    "waterDropSfx": "水滴音效.mp3",
+    "textStartSfx": "正文开头音效.mp3",
+    "flashDir": "快闪素材"
+  },
+  "capcutMate": {
+    "baseUrl": "http://127.0.0.1:30000/openapi/capcut-mate/v1",
+    "localDir": ".tools/capcut-mate",
+    "mediaHost": "127.0.0.1",
+    "mediaPort": 39091
+  },
+  "defaults": {
+    "aspect": "3:4",
+    "introText": "今天我们要分享的是",
+    "flashDurationUs": 1080000,
+    "coverHoldDurationUs": 1300000,
+    "coverAnimation": "水滴遮罩",
+    "coverAnimationDurationUs": 500000,
+    "smallCoverAnimation": "点开",
+    "smallCoverAnimationDurationUs": 500000,
+    "bgmVolume": 0.25,
+    "bodyVoiceVolume": 1,
+    "introVoiceVolume": 1,
+    "sfxVolume": 1,
+    "nickname": "",
+    "sourceNote": "内容为书评与感悟 素材来源网络",
+    "requireEnglishSubtitles": true
+  }
+}
