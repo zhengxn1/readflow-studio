@@ -6,7 +6,7 @@ import path from "node:path";
 import { parseSrt, shiftCues, alignTranslatedCues } from "../lib/srt.mjs";
 import { buildStoryboard } from "../lib/storyboard.mjs";
 import { findObsidianBook } from "../lib/obsidian-books.mjs";
-import { loadLayout } from "../lib/workflow-config.mjs";
+import { loadLayout, loadDraftTemplate } from "../lib/workflow-config.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
 
@@ -86,4 +86,65 @@ test("三种画幅按扣子基准画布缩放位置参数", () => {
   assert.equal(threeFour.style.author.transformY, 346);
   assert.equal(landscape.style.bookTitle.transformY, 353);
   assert.equal(threeFour.style.cover.transformX, -564);
+});
+
+test("16:9 画幅和唱片播放器模板可独立加载", () => {
+  const landscape = loadLayout(ROOT, "16:9");
+  const cassette = loadDraftTemplate(ROOT, "cassette-player");
+  assert.deepEqual(landscape.canvas, { width: 1920, height: 1080 });
+  assert.equal(cassette.aspect, "16:9");
+  assert.deepEqual(cassette.canvas, { width: 1920, height: 1080 });
+  assert.equal(cassette.displayName, "唱片夜读·沉浸播放器");
+  assert.equal(cassette.templateRole, "second");
+  assert.equal(cassette.templateVersion, 2);
+  assert.equal(cassette.materials.bigRecord, "播放器模板/大唱片.png");
+  assert.equal(cassette.materials.smallPlayer, "播放器模板/彩色小播放器.png");
+  assert.equal(cassette.layout.bigRecord.scale, 0.53);
+  assert.equal(cassette.layout.smallPlayer.scale, 0.32);
+  assert.deepEqual(cassette.layout.sideWaveLeft, { scale: 0.15, transformX: -1632, transformY: -918 });
+  assert.deepEqual(cassette.layout.sideWaveRight, { scale: 0.15, transformX: 1632, transformY: -918 });
+  assert.deepEqual(cassette.layout.timeDisplay, { scale: 0.06, transformX: -1700, transformY: -820 });
+  assert.equal(cassette.layout.coverWindow.transformX, -1200);
+  assert.equal(cassette.layout.coverWindow.roundCorner, 20);
+  assert.equal(cassette.text.bookTitle.fontSize, 10);
+  assert.equal(cassette.text.caption.fontSize, 5);
+  assert.equal(cassette.layout.progressDot.endX, 1545);
+});
+
+test("第三个模板使用 4:3 知识卡片布局", () => {
+  const template = loadDraftTemplate(ROOT, "knowledge-card");
+  assert.equal(template.displayName, "三分钟精读·知识导航");
+  assert.deepEqual(template.canvas, { width: 1440, height: 1080 });
+  assert.deepEqual(template.chapters, ["书籍引入", "内容介绍", "解决问题", "价值倡导"]);
+  assert.equal("keywords" in template, false);
+  assert.deepEqual(template.layout.openBook, { scale: 0.8, transformX: 0, transformY: -155 });
+  assert.deepEqual(template.layout.chapterXs, [-1108, -414, 287, 1052]);
+  assert.equal(template.layout.chapterY, 1000);
+  assert.deepEqual(template.motion, { startScale: 0.8, endScale: 0.85 });
+  assert.deepEqual(template.navigation, { visibility: "full", progressBars: false });
+  assert.deepEqual(
+    { x: template.text.bookTitle.transformX, y: template.text.bookTitle.transformY },
+    { x: -1045, y: -785 },
+  );
+  assert.deepEqual(
+    {
+      fontSize: template.text.openingBookTitle.fontSize,
+      x: template.text.openingBookTitle.transformX,
+      y: template.text.openingBookTitle.transformY,
+    },
+    { fontSize: 15, x: 0, y: 650 },
+  );
+  assert.deepEqual(
+    { x: template.text.openingAuthor.transformX, y: template.text.openingAuthor.transformY },
+    { x: 330, y: 400 },
+  );
+  assert.deepEqual(
+    { x: template.text.author.transformX, y: template.text.author.transformY },
+    { x: -1065, y: -940 },
+  );
+  assert.ok(Number.isInteger(template.text.chapter.fontSize));
+  assert.equal("chapterActive" in template.text, false);
+  assert.ok(Number.isInteger(template.text.bookTitle.fontSize));
+  assert.ok(Number.isInteger(template.text.author.fontSize));
+  assert.equal(template.templateVersion, 5);
 });

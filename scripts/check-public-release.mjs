@@ -17,9 +17,18 @@ const requiredFiles = [
   "scripts/check.mjs",
   "scripts/check-public-release.mjs",
   "scripts/create-jianying-draft.mjs",
+  "scripts/templates/cassette-player.mjs",
+  "scripts/templates/knowledge-card.mjs",
   "scripts/init.mjs",
   "scripts/prepare-jianying-workflow.mjs",
   "templates/jianying-draft/layouts.json",
+  "templates/jianying-draft/cassette-player.json",
+  "templates/jianying-draft/knowledge-card.json",
+  "templates/jianying-draft/catalog.json",
+  "docs/template-user-guide.md",
+  "docs/templates/01-book-cover-flash-bilingual.md",
+  "docs/templates/02-cassette-night-reader.md",
+  "docs/templates/03-three-minute-knowledge-navigation.md",
 ];
 const forbiddenPrefixes = [
   ".ai/",

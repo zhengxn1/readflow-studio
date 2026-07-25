@@ -4,7 +4,8 @@
   "aspects": {
     "3:4": { "width": 720, "height": 960 },
     "9:16": { "width": 1080, "height": 1920 },
-    "4:3": { "width": 960, "height": 720 }
+    "4:3": { "width": 960, "height": 720 },
+    "16:9": { "width": 1920, "height": 1080 }
   },
   "cozeStyle": {
     "cover": {

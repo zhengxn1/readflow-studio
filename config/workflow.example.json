@@ -21,6 +21,19 @@
     "mediaHost": "127.0.0.1",
     "mediaPort": 39091
   },
+  "templates": {
+    "cassettePlayer": {
+      "materialsRoot": "/path/to/视频剪辑/第二个模板素材",
+      "introAudio": "/path/to/唱片夜读片头.mov",
+      "ipCover": "/path/to/片头IP形象.jpg",
+      "flashDir": "/path/to/正方形快闪素材"
+    },
+    "knowledgeCard": {
+      "introAudio": "/path/to/三分钟精读片头.mov",
+      "openBook": "/path/to/打开书透明图.png",
+      "background": "/path/to/4x3纸张背景.jpg"
+    }
+  },
   "defaults": {
     "aspect": "3:4",
     "introText": "今天我们要分享的是",
