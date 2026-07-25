@@ -145,7 +145,7 @@ npm run workflow:draft -- \
   --dry-run
 ```
 
-背景使用用户上传的4:3参考模板；正文风景或象征画面由AI按分镜文案生成，经过绿色背景抠图后保存为透明RGBA PNG。确认干跑后去掉 `--dry-run`，并按标准参数安装到剪映草稿库。`third`、`template-3`、`第三个模板` 与 `knowledge-card` 指向同一个模板。独立使用说明见 `docs/templates/03-three-minute-knowledge-navigation.md`。
+背景使用用户上传的4:3参考模板；正文扁平手绘人物情境插画由AI按分镜文案生成。插画以人物动作、情绪和相关道具共同表达内容，生成前后都要检查手脚数量、肢体连接和持物关系，经过绿色背景抠图后保存为透明RGBA PNG。确认干跑后去掉 `--dry-run`，并按标准参数安装到剪映草稿库。`third`、`template-3`、`第三个模板` 与 `knowledge-card` 指向同一个模板。独立使用说明见 `docs/templates/03-three-minute-knowledge-navigation.md`。
 
 ## 9. QA与交付
 

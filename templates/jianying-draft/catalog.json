@@ -30,7 +30,7 @@
       "aliases": ["third", "template-3", "第三个模板", "knowledge-card"],
       "aspects": ["4:3"],
       "userGuide": "docs/templates/03-three-minute-knowledge-navigation.md",
-      "aiGeneratedAssets": ["按分镜文案生成并抠图的风景或象征画面"],
+      "aiGeneratedAssets": ["按分镜文案生成并抠图的扁平手绘人物情境插画"],
       "userReferenceAssets": ["4:3背景模板"],
       "summary": "打开书开场、四分块知识导航、中央透明插画和逐句关键词高亮。",
       "bestFor": ["三分钟精读", "知识点提炼", "课程式卡片视频"]

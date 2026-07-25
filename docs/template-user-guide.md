@@ -6,7 +6,7 @@
 |---|---|---|
 | 书封快闪·双语精读 | [模板1使用说明](templates/01-book-cover-flash-bilingual.md) | 根据每段正文文案生成对应分镜图片 |
 | 唱片夜读·沉浸播放器 | [模板2使用说明](templates/02-cassette-night-reader.md) | 根据本期内容生成1024×1024主题书封和1920×1080背景 |
-| 三分钟精读·知识导航 | [模板3使用说明](templates/03-three-minute-knowledge-navigation.md) | 沿用用户上传的背景模板，根据正文生成风景/象征画面并抠图 |
+| 三分钟精读·知识导航 | [模板3使用说明](templates/03-three-minute-knowledge-navigation.md) | 沿用用户上传的背景模板，根据正文生成扁平手绘人物情境插画并抠图 |
 
 ## 公共安装
 

@@ -41,7 +41,7 @@ export function buildTemplateAiAssetPlan({ templateId, book, cues, scenes }) {
     return {
       schemaVersion: 1,
       template: templateId,
-      generationPolicy: "背景使用用户上传的参考模板；正文风景或象征画面由AI逐镜生成，再抠图为透明RGBA素材。",
+      generationPolicy: "背景使用用户上传的参考模板；正文由AI逐镜生成扁平手绘人物情境插画，检查人物肢体结构后抠图为透明RGBA素材。",
       assets: [
         {
           id: "knowledge-background",
@@ -54,7 +54,7 @@ export function buildTemplateAiAssetPlan({ templateId, book, cues, scenes }) {
           source: "ai",
           output: `images/cutouts/${scene.imageFile}`,
           intermediate: `images/chroma/${scene.imageFile}`,
-          prompt: `${scene.imagePrompt} 主体或风景元素居中、边缘完整，使用纯绿色抠图背景，不添加文字或水印；生成后移除绿色背景并导出透明RGBA PNG。`,
+          prompt: `根据正文“${scene.text}”生成扁平手绘知识科普风人物情境插画。以一个主要人物或一组关系明确的人物为核心，用准确的动作、表情和与文案直接相关的书本、手机、日历、时钟、学习用品等道具表达内容；不要生成风景图、纯静物图或抽象氛围图。同一期人物造型、线条和配色保持一致。人物只能拥有正常数量的头、手臂、手掌和手指，手臂连接关系清楚，不得出现多余、重复、融合、悬空或错位的肢体，道具不得与手掌穿插。所有人物和道具组成一个紧凑的中央插画组，主体边缘完整，四周留出抠图安全空间。使用均匀纯绿色抠图背景，不添加地面、环境背景、文字、字幕、标志或水印；生成后移除绿色并导出透明RGBA PNG。`,
         })),
       ],
     };

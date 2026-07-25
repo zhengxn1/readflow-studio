@@ -83,7 +83,7 @@ function markdownManifest(manifest) {
       `- 正文音频：input/${path.basename(manifest.inputs.voice)}`,
       `- 中文字幕：input/${path.basename(manifest.inputs.srt)}`,
       "- 用户上传：4:3背景模板。",
-      "- AI生成：与每段正文对应的风景或象征画面；生成后抠图为透明RGBA PNG。",
+      "- AI生成：与每段正文对应的扁平手绘人物情境插画；检查肢体结构后抠图为透明RGBA PNG。",
       "- 固定素材：三分钟精读片头、打开书透明图和BGM。",
       "- 生成清单：generated/ai-assets.json",
       "",
@@ -346,7 +346,7 @@ const editPlanLines = cassettePlayerTemplate ? [
   "# 剪辑计划", "",
   "1. 使用三分钟精读·知识导航，不混入模板1或模板2素材。",
   "2. 背景使用用户上传的4:3参考模板，不由AI擅自更换。",
-  "3. AI逐镜生成与正文对应的风景或象征画面，并抠图为透明RGBA PNG。",
+  "3. AI逐镜生成与正文对应的扁平手绘人物情境插画，检查人物肢体和道具关系后抠图为透明RGBA PNG。",
   "4. 打开书只显示到第一句正文开始，正文图片统一居中。",
   "5. 四个知识分块从头显示到尾，不添加进度条。",
   "6. 每句字幕关键词必须来自对应原句。",
@@ -372,7 +372,8 @@ const reviewLines = cassettePlayerTemplate ? [
 ] : knowledgeCardTemplate ? [
   "# 审核记录", "",
   "- [ ] 背景为用户上传的4:3模板",
-  "- [ ] AI风景或象征画面与对应文案一致",
+  "- [ ] AI人物情境插画与对应文案一致",
+  "- [ ] 人物手脚数量、连接关系和持物动作正确",
   "- [ ] 所有正文图为透明RGBA PNG",
   "- [ ] 四个分块从头显示到尾且没有进度条",
   "- [ ] 每句关键词属于字幕原句",
@@ -394,7 +395,9 @@ const imageReadmeLines = cassettePlayerTemplate ? [
   "- cassette-background.png：1920×1080内容主题背景", "",
 ] : knowledgeCardTemplate ? [
   "# 模板3 AI图片", "",
-  "背景使用用户上传模板。按 generated/ai-assets.json 逐镜生成绿色背景素材，",
+  "背景使用用户上传模板。按 generated/ai-assets.json 逐镜生成扁平手绘人物情境插画，不生成风景图。",
+  "检查人物手脚数量、肢体连接和持物动作后再接受素材。",
+  "插画使用绿色背景生成，",
   "中间文件放入 images/chroma/，抠图后的透明RGBA PNG放入 images/cutouts/。", "",
 ] : [
   "# 模板1 AI分镜图片", "", `按 storyboard.md 和 generated/ai-assets.json 生成 ${scenes.length} 张图片。`,
