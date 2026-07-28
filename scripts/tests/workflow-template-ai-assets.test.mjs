@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { buildTemplateAiAssetPlan } from "../lib/template-ai-assets.mjs";
 
 const book = { title: "认知觉醒", author: "周岭" };
@@ -38,4 +39,20 @@ test("模板3保留用户背景模板并要求AI生成透明正文画面", () =>
   assert.match(plan.assets[1].prompt, /正常数量的头、手臂、手掌和手指/u);
   assert.match(plan.assets[1].prompt, /不要生成风景图/u);
   assert.match(plan.assets[1].prompt, /纯绿色抠图背景/u);
+});
+
+test("三套模板锁定正文配音音色", () => {
+  const catalog = JSON.parse(fs.readFileSync(
+    new URL("../../templates/jianying-draft/catalog.json", import.meta.url),
+    "utf8",
+  ));
+  const voices = Object.fromEntries(catalog.templates.map((item) => [
+    item.id,
+    `${item.narrationVoice.gender}:${item.narrationVoice.preset}`,
+  ]));
+  assert.deepEqual(voices, {
+    classic: "男声:声控弟弟",
+    "cassette-player": "男声:声控弟弟",
+    "knowledge-card": "女声:清醒语录",
+  });
 });

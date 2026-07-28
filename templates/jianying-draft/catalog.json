@@ -8,6 +8,7 @@
       "aliases": ["classic", "first", "template-1", "第一个模板"],
       "aspects": ["3:4", "9:16", "4:3"],
       "userGuide": "docs/templates/01-book-cover-flash-bilingual.md",
+      "narrationVoice": { "gender": "男声", "preset": "声控弟弟" },
       "aiGeneratedAssets": ["按分镜文案生成的正文图片"],
       "summary": "品牌片头、书封快闪、全画幅书封、情绪分镜和可选双语字幕。",
       "bestFor": ["深度书籍解读", "双语读书视频", "竖屏或4:3内容"]
@@ -19,6 +20,7 @@
       "aliases": ["second", "template-2", "第二个模板", "cassette-player"],
       "aspects": ["16:9"],
       "userGuide": "docs/templates/02-cassette-night-reader.md",
+      "narrationVoice": { "gender": "男声", "preset": "声控弟弟" },
       "aiGeneratedAssets": ["1024×1024主题书封", "1920×1080内容主题背景"],
       "summary": "旋转唱片、方形书封、音波、播放控件和睡前电台氛围。",
       "bestFor": ["睡前听书", "情绪电台", "横屏播客式解读"]
@@ -30,6 +32,7 @@
       "aliases": ["third", "template-3", "第三个模板", "knowledge-card"],
       "aspects": ["4:3"],
       "userGuide": "docs/templates/03-three-minute-knowledge-navigation.md",
+      "narrationVoice": { "gender": "女声", "preset": "清醒语录" },
       "aiGeneratedAssets": ["按分镜文案生成并抠图的扁平手绘人物情境插画"],
       "userReferenceAssets": ["4:3背景模板"],
       "summary": "打开书开场、四分块知识导航、中央透明插画和逐句关键词高亮。",

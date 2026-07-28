@@ -53,6 +53,8 @@ ReadFlow Studio（读流工作室）是一套从 Obsidian 阅读知识库到可�
 - 模板2：AI根据本期内容生成1024×1024主题书封和1920×1080背景。
 - 模板3：背景使用用户上传的参考模板，AI根据正文生成扁平手绘人物情境插画，检查肢体结构后抠图。
 
+正文配音音色固定为：模板1、模板2使用男声「声控弟弟」，模板3使用女声「清醒语录」。每次生成文案后，AI必须向用户显示对应音色，并提示生成、上传正文MP3和逐句对齐的SRT。
+
 模板2的锁定参数见 [唱片播放器参考规范](docs/cassette-player-reference-spec.md)，模板3的锁定参数见 [知识导航参考规范](docs/knowledge-card-reference-spec.md)。
 
 发布或二次开发前，请按照 [GitHub 发布清单](docs/publish-checklist.md) 完成检查。
