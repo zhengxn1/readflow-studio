@@ -49,6 +49,14 @@ export function loadLayout(root, aspect) {
   return { aspect, canvas, style: scaledStyle, baseCanvas: layout.baseCanvas };
 }
 
+export function loadDraftTemplate(root, templateId) {
+  const templatePath = path.join(root, "templates", "jianying-draft", `${templateId}.json`);
+  if (!fs.existsSync(templatePath)) throw new Error(`找不到剪映模板：${templateId}`);
+  const template = readJson(templatePath);
+  if (!template.canvas?.width || !template.canvas?.height) throw new Error(`剪映模板缺少画布尺寸：${templatePath}`);
+  return { ...template, templatePath };
+}
+
 export function parseCliArgs(argv) {
   const args = {};
   for (let index = 0; index < argv.length; index += 1) {

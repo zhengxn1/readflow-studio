@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "id": "knowledge-card",
+  "displayName": "三分钟精读·知识导航",
+  "templateRole": "third",
+  "templateVersion": 5,
+  "aspect": "4:3",
+  "canvas": { "width": 1440, "height": 1080 },
+  "chapters": ["书籍引入", "内容介绍", "解决问题", "价值倡导"],
+  "layout": {
+    "openBook": { "scale": 0.8, "transformX": 0, "transformY": -155 },
+    "scene": { "scale": 0.8, "transformX": 0, "transformY": -125 },
+    "chapterXs": [-1108, -414, 287, 1052],
+    "chapterY": 1000,
+    "chapterSeparatorXs": [-761, -64, 670]
+  },
+  "text": {
+    "chapter": { "font": "字语咏楷体", "fontSize": 7, "textColor": "#70A19C", "bold": true },
+    "chapterSeparator": { "font": "字语咏楷体", "fontSize": 6, "textColor": "#D8D0C8", "bold": false },
+    "openingCaption": { "font": "字语咏楷体", "fontSize": 7, "textColor": "#FFFFFF", "borderColor": "#243139", "transformX": 134, "transformY": -629, "bold": true, "hasShadow": true },
+    "openingBookTitle": { "font": "思源粗宋", "fontSize": 15, "textColor": "#FE8A80", "transformX": 0, "transformY": 650, "bold": true },
+    "openingAuthor": { "font": "研宋体", "fontSize": 5, "textColor": "#70A19C", "transformX": 330, "transformY": 400, "bold": false },
+    "caption": { "font": "字语咏楷体", "fontSize": 7, "textColor": "#FFFFFF", "borderColor": "#243139", "transformX": 0, "transformY": -670, "bold": true, "hasShadow": true },
+    "bookTitle": { "font": "思源粗宋", "fontSize": 6, "textColor": "#FE8A80", "transformX": -1045, "transformY": -785, "bold": true },
+    "author": { "font": "研宋体", "fontSize": 5, "textColor": "#70A19C", "transformX": -1065, "transformY": -940, "bold": false },
+    "nickname": { "font": "爱民小楷", "fontSize": 5, "textColor": "#B3A6A1", "transformX": 582, "transformY": -452, "bold": false }
+  },
+  "captionKeyword": {
+    "color": "#FE8A80",
+    "borderColor": "#243139",
+    "fontSize": 10
+  },
+  "motion": {
+    "startScale": 0.8,
+    "endScale": 0.85
+  },
+  "navigation": {
+    "visibility": "full",
+    "progressBars": false
+  },
+  "audio": { "voiceVolume": 1, "bgmVolume": 0.1 }
+}

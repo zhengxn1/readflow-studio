@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "id": "cassette-player",
+  "displayName": "唱片夜读·沉浸播放器",
+  "templateRole": "second",
+  "templateVersion": 2,
+  "aspect": "16:9",
+  "canvas": { "width": 1920, "height": 1080 },
+  "timeline": {
+    "openingPrimaryStartUs": 100000,
+    "openingPrimaryEndUs": 1550000,
+    "openingSecondaryStartUs": 1650000,
+    "openingSecondaryEndUs": 7050000,
+    "flashStartUs": 2900000,
+    "flashEndUs": 5750000,
+    "targetStartUs": 5750000,
+    "bodyStartUs": 6200000
+  },
+  "materials": {
+    "bigRecord": "播放器模板/大唱片.png",
+    "smallPlayer": "播放器模板/彩色小播放器.png",
+    "playbackControls": "播放素材.png",
+    "progressBar": "进度条.png",
+    "progressDot": "进度条小圆点.png",
+    "blackPanel": "黑底素材.png",
+    "musicNotes": "图形音符素材.mp4",
+    "sideWave": "左右音波视频素材.mp4",
+    "centerWave": "音频视频素材.mp4",
+    "particles": "粒子视频素材.mov",
+    "timeDisplay": "时间进度素材.mov",
+    "bgm": "背景音乐.mp3",
+    "springSfx": "发条音.mp3",
+    "popSfx": "啵音效.mp3"
+  },
+  "layout": {
+    "bigRecord": { "scale": 0.53, "transformX": -620, "transformY": 100 },
+    "smallPlayer": { "scale": 0.32, "transformX": -660, "transformY": 120 },
+    "coverWindow": { "scale": 0.53, "transformX": -1200, "transformY": 100, "maskWidth": 1024, "maskHeight": 1024, "roundCorner": 20 },
+    "musicNotes": { "scale": 1.10, "transformX": 140, "transformY": -10, "alpha": 0.82 },
+    "playbackControls": { "scale": 0.18, "transformX": 0, "transformY": -900 },
+    "progressBar": { "scale": 1.0, "transformX": 0, "transformY": 20 },
+    "progressDot": { "scale": 0.015, "startX": -1510, "endX": 1545, "transformY": -816 },
+    "timeDisplay": { "scale": 0.06, "transformX": -1700, "transformY": -820 },
+    "sideWaveLeft": { "scale": 0.15, "transformX": -1632, "transformY": -918 },
+    "sideWaveRight": { "scale": 0.15, "transformX": 1632, "transformY": -918 },
+    "centerWave": { "scale": 1.0, "transformX": 0, "transformY": -65 },
+    "particles": { "scale": 2.0, "transformX": 0, "transformY": 0, "alpha": 0.38 },
+    "blackPanel": { "scale": 1.0, "transformX": 0, "transformY": 0, "alpha": 0.62 }
+  },
+  "text": {
+    "openingPrimary": { "font": "楚辰体", "fontSize": 10, "textColor": "#ffffff", "transformX": 800, "transformY": 75, "bold": true, "hasShadow": true },
+    "openingSecondary": { "font": "励字勇敢黑简 大黑", "fontSize": 10, "letterSpacing": 3, "textColor": "#ffffff", "transformX": 800, "transformY": 45, "bold": true, "hasShadow": true },
+    "caption": { "font": "楚辰体", "fontSize": 5, "textColor": "#ffffff", "transformX": 800, "transformY": -35, "bold": true, "hasShadow": true },
+    "englishCaption": { "font": "Arial", "fontSize": 3.2, "textColor": "#d7d7d7", "transformX": 800, "transformY": -95, "bold": false, "hasShadow": true },
+    "bookTitle": { "font": "思源粗宋", "fontSize": 10, "textColor": "#ffffff", "transformX": 800, "transformY": 390, "bold": true, "hasShadow": true },
+    "author": { "font": "研宋体", "fontSize": 5.2, "textColor": "#ffffff", "transformX": 800, "transformY": 320, "bold": false, "hasShadow": true },
+    "duration": { "font": "Arial", "fontSize": 5, "textColor": "#ffffff", "transformX": 1700, "transformY": -816, "bold": false },
+    "nickname": { "font": "爱民小楷", "fontSize": 4.2, "textColor": "#f2e8df", "transformX": -1550, "transformY": -570, "bold": false },
+    "rec": { "font": "Arial", "fontSize": 4.5, "textColor": "#ffffff", "transformX": -1670, "transformY": 840, "bold": true }
+  },
+  "audio": { "voiceVolume": 1.0, "bgmVolume": 0.12, "sfxVolume": 0.35 }
+}

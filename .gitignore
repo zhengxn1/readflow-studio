@@ -46,11 +46,24 @@ renders/
 output/
 draft_content.json
 draft_meta_info.json
+draft_info.json
+draft_agency_config.json
+attachment_pc_common.json
+template.tmp
+*.extra
 
 # Local tools and plugin state
 .tools/
 tmp/
 docs/superpowers/
+local-references/
+
+# User-provided reference documents
+*.docx
+*.pages
+*.key
+*.pptx
+*.xlsx
 
 # Old Book Video / Whisper / HyperFrames implementation kept locally only
 scripts/create-body-timings.mjs
@@ -86,3 +99,7 @@ coverage/
 
 # OS/editor noise
 .DS_Store
+.idea/
+.vscode/
+*.swp
+*.tmp

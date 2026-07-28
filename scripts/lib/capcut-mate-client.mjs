@@ -21,6 +21,9 @@ export class CapcutMateClient {
       const detail = payload.detail ? JSON.stringify(payload.detail) : text;
       throw new Error(`CapCut Mate ${endpoint} 失败（HTTP ${response.status}）：${detail}`);
     }
+    if (Number.isFinite(payload.code) && payload.code !== 0) {
+      throw new Error(`CapCut Mate ${endpoint} 失败（code ${payload.code}）：${payload.message || text}`);
+    }
     return payload;
   }
 
@@ -86,6 +89,26 @@ export class CapcutMateClient {
 
   addKeyframes(draftUrl, keyframes) {
     return this.post("add_keyframes", { draft_url: draftUrl, keyframes: JSON.stringify(keyframes) });
+  }
+
+  addMasks(draftUrl, segmentIds, mask = {}) {
+    return this.post("add_masks", {
+      draft_url: draftUrl,
+      segment_ids: segmentIds,
+      name: mask.name || "圆形",
+      X: mask.x ?? 0,
+      Y: mask.y ?? 0,
+      width: mask.width ?? 512,
+      height: mask.height ?? 512,
+      feather: mask.feather ?? 0,
+      rotation: mask.rotation ?? 0,
+      invert: mask.invert ?? false,
+      roundCorner: mask.roundCorner ?? 0,
+    });
+  }
+
+  addEffects(draftUrl, effectInfos) {
+    return this.post("add_effects", { draft_url: draftUrl, effect_infos: JSON.stringify(effectInfos) });
   }
 
   saveDraft(draftUrl) {

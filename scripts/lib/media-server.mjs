@@ -11,7 +11,17 @@ const MIME = {
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
   ".webp": "image/webp",
+  ".mp4": "video/mp4",
+  ".mov": "video/quicktime",
 };
+
+function routeExtension(filePath) {
+  const extension = path.extname(filePath).toLowerCase();
+  if (extension) return extension;
+  const header = fs.readFileSync(filePath).subarray(0, 12);
+  if (header.length >= 8 && header[0] === 0x89 && header.subarray(1, 4).toString() === "PNG") return ".png";
+  return "";
+}
 
 export async function startMediaServer(filePaths, options = {}) {
   const host = options.host || "127.0.0.1";
@@ -20,7 +30,7 @@ export async function startMediaServer(filePaths, options = {}) {
   for (const filePath of [...new Set(filePaths.map((item) => path.resolve(item)))]) {
     if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) throw new Error(`无法共享不存在的素材：${filePath}`);
     const token = createHash("sha256").update(filePath).digest("hex").slice(0, 20);
-    routeMap.set(`/media/${token}${path.extname(filePath).toLowerCase()}`, filePath);
+    routeMap.set(`/media/${token}${routeExtension(filePath)}`, filePath);
   }
 
   const server = http.createServer((request, response) => {
@@ -37,7 +47,7 @@ export async function startMediaServer(filePaths, options = {}) {
       return;
     }
     response.writeHead(200, {
-      "content-type": MIME[path.extname(filePath).toLowerCase()] || "application/octet-stream",
+      "content-type": MIME[routeExtension(filePath)] || "application/octet-stream",
       "content-length": fs.statSync(filePath).size,
       "cache-control": "no-store",
     });

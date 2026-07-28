@@ -11,9 +11,31 @@ import { CapcutMateClient } from "./lib/capcut-mate-client.mjs";
 const ROOT = process.cwd();
 const args = parseCliArgs(process.argv.slice(2));
 if (!args.project) {
-  console.error("用法：node scripts/create-jianying-draft.mjs --project \"项目名\" [--intro-only] [--install-to-jianying --jianying-dir \"草稿库目录\"] [--dry-run] [--cover-fallback]");
+  console.error("用法：node scripts/create-jianying-draft.mjs --project \"项目名\" [--template classic|second|third|knowledge-card] [--intro-only] [--install-to-jianying --jianying-dir \"草稿库目录\"] [--dry-run] [--cover-fallback]");
   process.exit(1);
 }
+
+const templateAliases = new Map([
+  ["second", "cassette-player"],
+  ["template-2", "cassette-player"],
+  ["第二个模板", "cassette-player"],
+  ["third", "knowledge-card"],
+  ["template-3", "knowledge-card"],
+  ["第三个模板", "knowledge-card"],
+]);
+const templateArgument = String(args.template || "classic");
+const requestedTemplate = templateAliases.get(templateArgument) || templateArgument;
+if (requestedTemplate === "cassette-player") {
+  const { createCassettePlayerDraft } = await import("./templates/cassette-player.mjs");
+  await createCassettePlayerDraft({ root: ROOT, args });
+  process.exit(0);
+}
+if (requestedTemplate === "knowledge-card") {
+  const { createKnowledgeCardDraft } = await import("./templates/knowledge-card.mjs");
+  await createKnowledgeCardDraft({ root: ROOT, args });
+  process.exit(0);
+}
+if (requestedTemplate !== "classic") throw new Error(`不支持的模板：${requestedTemplate}`);
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));

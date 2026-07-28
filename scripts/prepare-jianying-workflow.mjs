@@ -8,6 +8,7 @@ import { parseSrt, shiftCues, formatUs, alignTranslatedCues } from "./lib/srt.mj
 import { buildStoryboard, storyboardMarkdown } from "./lib/storyboard.mjs";
 import { applyVisualDirections, visualDirectionRules } from "./lib/visual-direction.mjs";
 import { loadWorkflowConfig, loadLayout, parseCliArgs, resolveMaterialPath, slugifyTitle } from "./lib/workflow-config.mjs";
+import { buildTemplateAiAssetPlan } from "./lib/template-ai-assets.mjs";
 
 const ROOT = process.cwd();
 const args = parseCliArgs(process.argv.slice(2));
@@ -54,6 +55,40 @@ function createFullCanvasCover(source, destination, canvas) {
 }
 
 function markdownManifest(manifest) {
+  if (manifest.draftTemplate === "cassette-player") {
+    return [
+      "# 素材清单",
+      "",
+      "- 使用模板：唱片夜读·沉浸播放器",
+      `- 项目画幅：16:9（${manifest.canvas.width}×${manifest.canvas.height}）`,
+      `- 书籍：${manifest.book.title}`,
+      `- 作者：${manifest.book.author || "未填写"}`,
+      `- 正文音频：input/${path.basename(manifest.inputs.voice)}`,
+      `- 中文字幕：input/${path.basename(manifest.inputs.srt)}`,
+      `- 英文字幕：${manifest.inputs.englishSrt ? `input/${path.basename(manifest.inputs.englishSrt)}` : "未提供"}`,
+      "- AI生成：1024×1024主题书封、1920×1080内容主题背景。",
+      "- 固定素材：唱片播放器素材包、片头、IP形象和正方形快闪目录。",
+      "- 生成清单：generated/ai-assets.json",
+      "",
+    ].join("\n");
+  }
+  if (manifest.draftTemplate === "knowledge-card") {
+    return [
+      "# 素材清单",
+      "",
+      "- 使用模板：三分钟精读·知识导航",
+      `- 项目画幅：4:3（${manifest.canvas.width}×${manifest.canvas.height}）`,
+      `- 书籍：${manifest.book.title}`,
+      `- 作者：${manifest.book.author || "未填写"}`,
+      `- 正文音频：input/${path.basename(manifest.inputs.voice)}`,
+      `- 中文字幕：input/${path.basename(manifest.inputs.srt)}`,
+      "- 用户上传：4:3背景模板。",
+      "- AI生成：与每段正文对应的扁平手绘人物情境插画；检查肢体结构后抠图为透明RGBA PNG。",
+      "- 固定素材：三分钟精读片头、打开书透明图和BGM。",
+      "- 生成清单：generated/ai-assets.json",
+      "",
+    ].join("\n");
+  }
   return [
     "# 素材清单",
     "",
@@ -78,8 +113,35 @@ function markdownManifest(manifest) {
   ].join("\n");
 }
 
+function srtTimestamp(us) {
+  const totalMs = Math.max(0, Math.round(us / 1000));
+  const hours = Math.floor(totalMs / 3_600_000);
+  const minutes = Math.floor((totalMs % 3_600_000) / 60_000);
+  const seconds = Math.floor((totalMs % 60_000) / 1000);
+  const milliseconds = totalMs % 1000;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")},${String(milliseconds).padStart(3, "0")}`;
+}
+
+function cuesToSrt(cues) {
+  return `${cues.map((cue, index) => [
+    index + 1,
+    `${srtTimestamp(cue.startUs)} --> ${srtTimestamp(cue.endUs)}`,
+    cue.text,
+  ].join("\n")).join("\n\n")}\n`;
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 const { config, configPath } = loadWorkflowConfig(ROOT, args.config);
-const aspect = args.aspect || config.defaults?.aspect || "3:4";
+const requestedTemplate = String(args.template || "classic");
+const cassettePlayerTemplate = ["second", "template-2", "第二个模板", "cassette-player"].includes(requestedTemplate);
+const knowledgeCardTemplate = ["third", "template-3", "第三个模板", "knowledge-card"].includes(requestedTemplate);
+const aspect = args.aspect
+  || (cassettePlayerTemplate ? "16:9" : knowledgeCardTemplate ? "4:3" : null)
+  || config.defaults?.aspect
+  || "3:4";
 const layout = loadLayout(ROOT, aspect);
 const voiceSource = path.resolve(args.voice);
 const srtSource = path.resolve(args.srt);
@@ -149,13 +211,33 @@ const flashStartUs = introVideoDurationUs;
 const flashEndUs = flashStartUs + flashDurationUs;
 const coverStartUs = flashEndUs;
 const introDurationUs = coverStartUs + coverHoldDurationUs;
-const cues = parseSrt(fs.readFileSync(srtPath, "utf8"));
+let cues = parseSrt(fs.readFileSync(srtPath, "utf8"));
+const normalizedBookTitle = String(args.book).replace(/[《》\s]/g, "");
+const rawFirstCueText = String(cues[0]?.text || "");
+const normalizedFirstCue = rawFirstCueText.replace(/[《》\s]/g, "");
+let titlePrefixWasSplit = false;
+if (knowledgeCardTemplate && normalizedFirstCue !== normalizedBookTitle && normalizedFirstCue.startsWith(normalizedBookTitle)) {
+  const titlePrefix = new RegExp(`^[《]?\\s*${escapeRegExp(args.book)}\\s*[》]?`, "u");
+  const remainder = rawFirstCueText.replace(titlePrefix, "").trim();
+  if (remainder) {
+    const first = cues[0];
+    const durationUs = first.endUs - first.startUs;
+    const titleRatio = Math.max(0.22, Math.min(0.45, normalizedBookTitle.length / (normalizedBookTitle.length + remainder.length)));
+    const splitUs = Math.min(first.endUs - 200_000, first.startUs + Math.max(650_000, Math.round(durationUs * titleRatio)));
+    cues = [
+      { ...first, text: args.book, endUs: splitUs },
+      { ...first, text: remainder, startUs: splitUs },
+      ...cues.slice(1),
+    ].map((cue, index) => ({ ...cue, index: index + 1 }));
+    fs.writeFileSync(srtPath, cuesToSrt(cues));
+    titlePrefixWasSplit = true;
+  }
+}
 const englishCues = englishSrtPath ? parseSrt(fs.readFileSync(englishSrtPath, "utf8")) : [];
 const alignedEnglishCues = englishCues.length ? alignTranslatedCues(cues, englishCues) : [];
 const captionOffsetUs = coverStartUs;
 const shiftedCues = shiftCues(cues, captionOffsetUs);
 const shiftedEnglishCues = shiftCues(alignedEnglishCues, captionOffsetUs);
-const normalizedBookTitle = String(args.book).replace(/[《》\s]/g, "");
 const firstCueIsBookTitle = String(cues[0]?.text || "").replace(/[《》\s]/g, "") === normalizedBookTitle;
 if (!firstCueIsBookTitle) {
   throw new Error(`中文字幕第一条必须是书名《${args.book}》，以便全画幅封面、书名朗读和正文切换准确同步。`);
@@ -168,6 +250,13 @@ const scenes = applyVisualDirections(buildStoryboard(storyboardCues, captionOffs
   ...scene,
   materialStatus: fs.existsSync(path.join(imagesDir, scene.imageFile)) ? "confirmed" : "generate",
 }));
+const draftTemplate = cassettePlayerTemplate ? "cassette-player" : knowledgeCardTemplate ? "knowledge-card" : "classic";
+const aiAssetPlan = buildTemplateAiAssetPlan({
+  templateId: draftTemplate,
+  book: { title: args.book, author: args.author || book.author },
+  cues: storyboardCues,
+  scenes,
+});
 const voiceDurationUs = probeDurationUs(voicePath);
 const bodyDurationUs = Math.max(voiceDurationUs, cues.at(-1).endUs);
 const totalDurationUs = captionOffsetUs + bodyDurationUs;
@@ -177,6 +266,7 @@ const manifest = {
   createdAt: new Date().toISOString(),
   configPath: path.relative(ROOT, configPath),
   projectName,
+  draftTemplate,
   episodeDir: path.relative(ROOT, episodeDir),
   aspect,
   canvas: layout.canvas,
@@ -199,6 +289,7 @@ const manifest = {
     coverHoldDurationUs,
     captionOffsetUs,
     firstCueIsBookTitle,
+    titlePrefixWasSplit,
   },
   body: { durationUs: bodyDurationUs, srtCueCount: cues.length, englishSrtCueCount: englishCues.length, sceneCount: scenes.length },
   totalDurationUs,
@@ -216,6 +307,7 @@ const manifest = {
     segments: path.join("generated", "segments.json"),
     storyboard: path.join("generated", "storyboard.json"),
     imagePrompts: path.join("generated", "image-prompts.json"),
+    aiAssets: path.join("generated", "ai-assets.json"),
   },
 };
 
@@ -233,6 +325,7 @@ fs.writeFileSync(path.join(episodeDir, manifest.generated.segments), `${JSON.str
   duration: Number(((cue.endUs - cue.startUs) / 1_000_000).toFixed(3)),
 })), null, 2)}\n`);
 fs.writeFileSync(path.join(episodeDir, manifest.generated.storyboard), `${JSON.stringify(scenes, null, 2)}\n`);
+fs.writeFileSync(path.join(episodeDir, manifest.generated.aiAssets), `${JSON.stringify(aiAssetPlan, null, 2)}\n`);
 fs.writeFileSync(path.join(episodeDir, manifest.generated.imagePrompts), `${JSON.stringify({
   rules: visualDirectionRules(),
   scenes: scenes.map(({ id, text, visualStyle, imagePrompt, imageFile, materialStatus }) => ({
@@ -241,40 +334,85 @@ fs.writeFileSync(path.join(episodeDir, manifest.generated.imagePrompts), `${JSON
 }, null, 2)}\n`);
 fs.writeFileSync(path.join(episodeDir, "storyboard.md"), storyboardMarkdown(scenes));
 fs.writeFileSync(path.join(episodeDir, "source-manifest.md"), markdownManifest(manifest));
-fs.writeFileSync(path.join(episodeDir, "edit-plan.md"), [
+const editPlanLines = cassettePlayerTemplate ? [
   "# 剪辑计划", "",
-  "1. 片头 MOV 与片头语音同步，不显示片头字幕，也不播放机械音效。",
-  "2. MOV 结束后快闪素材与机械音效同步。",
-  "3. 快闪结束后全画幅封面以水滴遮罩进入，播放完整水滴音效；正文 MP3 与书名字幕从此处开始。",
-  "4. 书名朗读结束后的第一句正文开始时切换第一张分镜图，小封面点开并同步正文开头音效。",
-  "5. 书名和作者从书名朗读结束后持续到视频结束。",
-  "6. 每个分镜覆盖 5～10 条正文字幕，一分镜一张图。",
-  "7. 中文和英文使用独立字幕轨，英文沿用中文时间并放在中文下方。",
-  "8. 草稿安装时复制素材到草稿 assets 并重写路径，保留全部轨道可编辑。", "",
-].join("\n"));
-fs.writeFileSync(path.join(episodeDir, "review-notes.md"), [
+  "1. 使用唱片夜读·沉浸播放器，不混入模板1或模板3素材。",
+  "2. AI依据本期正文生成1024×1024主题书封和1920×1080背景。",
+  "3. 片头IP、12张方形快闪和本期主题书封只在左侧方形窗口显示。",
+  "4. 正文从6.20秒开始，书名、作者和字幕位于右侧。",
+  "5. 唱片、小播放器、音波、时间、进度点和播放控件保持独立轨道。",
+  "6. 草稿安装时复制素材到草稿assets并重写路径。", "",
+] : knowledgeCardTemplate ? [
+  "# 剪辑计划", "",
+  "1. 使用三分钟精读·知识导航，不混入模板1或模板2素材。",
+  "2. 背景使用用户上传的4:3参考模板，不由AI擅自更换。",
+  "3. AI逐镜生成与正文对应的扁平手绘人物情境插画，检查人物肢体和道具关系后抠图为透明RGBA PNG。",
+  "4. 打开书只显示到第一句正文开始，正文图片统一居中。",
+  "5. 四个知识分块从头显示到尾，不添加进度条。",
+  "6. 每句字幕关键词必须来自对应原句。",
+  "7. 所有前景图使用80%到85%的缩放关键帧。", "",
+] : [
+  "# 剪辑计划", "",
+  "1. 使用书封快闪·双语精读，不混入模板2或模板3素材。",
+  "2. 片头MOV与片头语音同步，不显示片头字幕，也不播放机械音效。",
+  "3. MOV结束后快闪素材与机械音效同步。",
+  "4. 快闪结束后全画幅封面以水滴遮罩进入。",
+  "5. AI根据每个分镜的正文文案生成对应图片，一镜一图。",
+  "6. 中文和英文使用独立字幕轨。",
+  "7. 草稿安装时复制素材到草稿assets并重写路径。", "",
+];
+const reviewLines = cassettePlayerTemplate ? [
   "# 审核记录", "",
-  "- [ ] 确认原始封面和目标画幅封面版本",
-  "- [ ] 确认分镜均覆盖 5～10 条字幕",
-  "- [ ] 所有 scene-*.png 已生成，且无人像近景、文字卡片和画面拉伸",
-  "- [ ] 片头 MOV 无字幕，且没有机械音效",
-  "- [ ] 快闪与机械音效同步",
-  "- [ ] 书名封面、水滴遮罩、水滴音效、正文人声和书名字幕同步",
-  "- [ ] 第一正文句、小封面点开和正文开头音效同步",
-  "- [ ] 中英文字幕条数与时间一致，英文位于中文下方且间距清晰",
-  "- [ ] 书名和作者从书名结束持续到视频结束，且与正文字幕不拥挤",
-  "- [ ] 确认字幕未早于声音，并检查开头、中段、结尾",
-  "- [ ] 确认字体在本机剪映可用",
-  "- [ ] 安装草稿只引用自身 assets，不引用项目或 .tools 临时目录", "",
-].join("\n"));
-fs.writeFileSync(path.join(imagesDir, "README.md"), [
-  "# 正文分镜图片", "", `请按 storyboard.md 生成 ${scenes.length} 张图片。`,
+  "- [ ] AI主题书封为1024×1024且对应正文",
+  "- [ ] AI背景为1920×1080且对应正文",
+  "- [ ] 播放器固定素材包完整",
+  "- [ ] 中文字幕第一条为书名",
+  "- [ ] 正文从6.20秒开始",
+  "- [ ] 安装草稿只引用自身assets", "",
+] : knowledgeCardTemplate ? [
+  "# 审核记录", "",
+  "- [ ] 背景为用户上传的4:3模板",
+  "- [ ] AI人物情境插画与对应文案一致",
+  "- [ ] 人物手脚数量、连接关系和持物动作正确",
+  "- [ ] 所有正文图为透明RGBA PNG",
+  "- [ ] 四个分块从头显示到尾且没有进度条",
+  "- [ ] 每句关键词属于字幕原句",
+  "- [ ] 所有前景图缩放为80%到85%",
+  "- [ ] 安装草稿只引用自身assets", "",
+] : [
+  "# 审核记录", "",
+  "- [ ] 每张AI分镜图与对应正文一致",
+  "- [ ] 每镜覆盖5到10条字幕",
+  "- [ ] 所有scene图片无文字、水印、人物近景或拉伸",
+  "- [ ] 片头、快闪、封面揭示和音效同步",
+  "- [ ] 中英文字幕时间一致",
+  "- [ ] 安装草稿只引用自身assets", "",
+];
+const imageReadmeLines = cassettePlayerTemplate ? [
+  "# 模板2 AI图片", "",
+  "按 generated/ai-assets.json 生成：",
+  "- cassette-square-cover.png：1024×1024主题书封",
+  "- cassette-background.png：1920×1080内容主题背景", "",
+] : knowledgeCardTemplate ? [
+  "# 模板3 AI图片", "",
+  "背景使用用户上传模板。按 generated/ai-assets.json 逐镜生成扁平手绘人物情境插画，不生成风景图。",
+  "检查人物手脚数量、肢体连接和持物动作后再接受素材。",
+  "插画使用绿色背景生成，",
+  "中间文件放入 images/chroma/，抠图后的透明RGBA PNG放入 images/cutouts/。", "",
+] : [
+  "# 模板1 AI分镜图片", "", `按 storyboard.md 和 generated/ai-assets.json 生成 ${scenes.length} 张图片。`,
   `画幅：${aspect}，尺寸：${layout.canvas.width}×${layout.canvas.height}。`,
-  "文件名必须对应 scene-001.png、scene-002.png……；图片不要带文字，不要拉伸。",
-  "人物只能是面积不超过10%的远景背影或剪影，禁止真人近景和清晰五官。",
-  "分镜风格与完整提示词见 generated/image-prompts.json。", "",
-].join("\n"));
+  "文件名必须对应scene-001.png、scene-002.png……；每张图必须对应分镜正文。", "",
+];
+fs.writeFileSync(path.join(episodeDir, "edit-plan.md"), editPlanLines.join("\n"));
+fs.writeFileSync(path.join(episodeDir, "review-notes.md"), reviewLines.join("\n"));
+fs.writeFileSync(path.join(imagesDir, "README.md"), imageReadmeLines.join("\n"));
 
+const next = cassettePlayerTemplate
+  ? `按 generated/ai-assets.json 生成方形书封和16:9背景后，运行 npm run workflow:draft -- --project "${projectName}" --template second`
+  : knowledgeCardTemplate
+    ? `按 generated/ai-assets.json 生成并抠出透明正文图后，运行 npm run workflow:draft -- --project "${projectName}" --template third`
+    : `按 generated/ai-assets.json 补齐AI分镜图后，运行 npm run workflow:draft -- --project "${projectName}" --template classic`;
 console.log(JSON.stringify({
   ok: true,
   projectName,
@@ -286,5 +424,5 @@ console.log(JSON.stringify({
   captions: cues.length,
   scenes: scenes.length,
   introOffset: formatUs(captionOffsetUs),
-  next: `确认分镜并补齐 images/scene-*.png 后，运行 npm run workflow:draft -- --project \"${projectName}\"`,
+  next,
 }, null, 2));
