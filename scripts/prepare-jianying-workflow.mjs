@@ -64,7 +64,7 @@ function createFullCanvasCover(source, destination, canvas) {
 }
 
 function markdownManifest(manifest) {
-  const optionalMaterialName = (filePath) => filePath ? path.basename(filePath) : "未启用";
+  const materialLabel = (filePath) => filePath ? path.basename(filePath) : "未启用";
   return [
     "# 素材清单",
     "",
@@ -74,13 +74,17 @@ function markdownManifest(manifest) {
     `- Obsidian 笔记：${manifest.book.notePath}`,
     `- 书籍封面：input/${path.basename(manifest.inputs.cover)}`,
     `- 全画幅封面：input/${path.basename(manifest.inputs.fullCover)}（保持原封面比例，背景适配画布）`,
-    `- 片头话术音频：input/${path.basename(manifest.inputs.introVoice)}`,
-    `- 书名配音：input/${path.basename(manifest.inputs.titleVoice)}`,
-    `- 正文音频：input/${path.basename(manifest.inputs.voice)}`,
+    `- 片头话术配音：${manifest.inputs.introVoice}`,
+    `- 书名配音：${manifest.inputs.titleVoice}`,
+    `- 正文配音：${manifest.inputs.voice}`,
     `- 中文字幕：input/${path.basename(manifest.inputs.srt)}`,
     `- 英文字幕：${manifest.inputs.englishSrt ? `input/${path.basename(manifest.inputs.englishSrt)}` : "未提供"}`,
-    `- 水滴音效：${optionalMaterialName(manifest.fixedMaterials.waterDropSfx)}`,
-    `- 正文开头音效：${optionalMaterialName(manifest.fixedMaterials.textStartSfx)}`,
+    `- 背景音乐：${materialLabel(manifest.fixedMaterials.bgm)}`,
+    `- 片头 MOV：${materialLabel(manifest.fixedMaterials.introVideo)}`,
+    `- 机械音效：${materialLabel(manifest.fixedMaterials.mechanicalSfx)}`,
+    `- 水滴音效：${materialLabel(manifest.fixedMaterials.waterDropSfx)}`,
+    `- 正文开头音效：${materialLabel(manifest.fixedMaterials.textStartSfx)}`,
+    `- 快闪图片目录：${materialLabel(manifest.fixedMaterials.flashDir)}`,
     `- 片头话术时长：${(manifest.opening.introVoiceDurationUs / 1_000_000).toFixed(3)} 秒`,
     `- 书名配音时长：${(manifest.opening.titleVoiceDurationUs / 1_000_000).toFixed(3)} 秒`,
     `- 正文时长：${(manifest.body.durationUs / 1_000_000).toFixed(3)} 秒`,
@@ -257,11 +261,11 @@ fs.writeFileSync(path.join(episodeDir, "storyboard.md"), storyboardMarkdown(scen
 fs.writeFileSync(path.join(episodeDir, "source-manifest.md"), markdownManifest(manifest));
 fs.writeFileSync(path.join(episodeDir, "edit-plan.md"), [
   "# 剪辑计划", "",
-  "1. 片头 MOV 与片头语音同步，不显示片头字幕，也不播放机械音效。",
-  "2. MOV 结束后快闪素材与机械音效同步。",
-  "3. 快闪结束后全画幅封面以水滴遮罩进入，播放完整水滴音效；正文 MP3 与书名字幕从此处开始。",
-  "4. 书名朗读结束后的第一句正文开始时切换第一张分镜图，小封面点开并同步正文开头音效。",
-  "5. 书名和作者从书名朗读结束后持续到视频结束。",
+  "1. 快闪图片、片头 MOV 或全画幅书封承接片头话术；有快闪时优先使用快闪，其次使用片头 MOV，否则以全画幅书封兜底。",
+  "2. 片头话术结束时显示全画幅书封，同时开始书名配音和自动生成的书名字幕。",
+  "3. 书名配音结束后紧接正文配音、第一条正文字幕和第一张分镜图；小封面按模板进入。",
+  "4. BGM、机械音效、水滴音效和正文开头音效仅在对应素材存在时添加。",
+  "5. 书名和作者从书名配音结束后持续到视频结束。",
   "6. 每个分镜覆盖 5～10 条正文字幕，一分镜一张图。",
   "7. 中文和英文使用独立字幕轨，英文沿用中文时间并放在中文下方。",
   "8. 草稿安装时复制素材到草稿 assets 并重写路径，保留全部轨道可编辑。", "",
@@ -271,10 +275,10 @@ fs.writeFileSync(path.join(episodeDir, "review-notes.md"), [
   "- [ ] 确认原始封面和目标画幅封面版本",
   "- [ ] 确认分镜均覆盖 5～10 条字幕",
   "- [ ] 所有 scene-*.png 已生成，且无人像近景、文字卡片和画面拉伸",
-  "- [ ] 片头 MOV 无字幕，且没有机械音效",
-  "- [ ] 快闪与机械音效同步",
-  "- [ ] 书名封面、水滴遮罩、水滴音效、正文人声和书名字幕同步",
-  "- [ ] 第一正文句、小封面点开和正文开头音效同步",
+  "- [ ] 检查片头话术 → 书名配音 → 正文配音的三段音频边界连续且无重叠",
+  "- [ ] 检查实际启用的开场素材按快闪图片、片头 MOV、全画幅书封的优先级正确承接片头话术",
+  "- [ ] 检查实际启用的可选音效位于对应事件点；未启用的音效不应产生空轨或占位",
+  "- [ ] 正文 SRT 从 00:00:00 开始，第一条是第一句正文，并从正文配音起点统一偏移",
   "- [ ] 中英文字幕条数与时间一致，英文位于中文下方且间距清晰",
   "- [ ] 书名和作者从书名结束持续到视频结束，且与正文字幕不拥挤",
   "- [ ] 确认字幕未早于声音，并检查开头、中段、结尾",

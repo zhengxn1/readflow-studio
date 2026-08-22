@@ -37,7 +37,7 @@ for (const file of scriptFiles) {
 }
 
 const config = JSON.parse(fs.readFileSync(path.join(ROOT, "config", "workflow.example.json"), "utf8"));
-for (const key of ["bgm", "introVideo", "introVoice", "mechanicalSfx", "waterDropSfx", "textStartSfx", "flashDir"]) {
+for (const key of ["bgm", "introVideo", "mechanicalSfx", "waterDropSfx", "textStartSfx", "flashDir"]) {
   if (!config.materials?.[key]) throw new Error(`示例配置缺少 materials.${key}`);
 }
 const layouts = JSON.parse(fs.readFileSync(path.join(ROOT, "templates", "jianying-draft", "layouts.json"), "utf8"));

@@ -121,6 +121,23 @@ test("prepare and draft support a schema v3 project with optional opening assets
     );
     assert.equal(workflow.fixedMaterials.bgm, "");
 
+    const sourceManifest = fs.readFileSync(path.join(episodeDir, "source-manifest.md"), "utf8");
+    assert.match(sourceManifest, /片头话术配音：input\/intro-voice\.mp3/u);
+    assert.match(sourceManifest, /书名配音：input\/title-voice\.mp3/u);
+    assert.match(sourceManifest, /背景音乐：未启用/u);
+
+    const editPlan = fs.readFileSync(path.join(episodeDir, "edit-plan.md"), "utf8");
+    assert.match(editPlan, /快闪图片、片头 MOV 或全画幅书封/u);
+    assert.match(editPlan, /书名配音和自动生成的书名字幕/u);
+
+    const reviewNotes = fs.readFileSync(path.join(episodeDir, "review-notes.md"), "utf8");
+    assert.match(reviewNotes, /片头话术.*书名.*正文/u);
+    assert.match(reviewNotes, /实际启用的开场素材/u);
+    assert.match(reviewNotes, /可选音效/u);
+    assert.doesNotMatch(reviewNotes, /片头 MOV 无字幕/u);
+    assert.doesNotMatch(reviewNotes, /快闪与机械音效同步/u);
+    assert.doesNotMatch(reviewNotes, /水滴遮罩、水滴音效/u);
+
     const shiftedCaptions = JSON.parse(fs.readFileSync(
       path.join(episodeDir, workflow.generated.shiftedCaptions),
       "utf8",

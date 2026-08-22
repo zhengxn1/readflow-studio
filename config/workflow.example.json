@@ -9,7 +9,6 @@
     "root": "/path/to/视频剪辑",
     "bgm": "背景音乐.mp3",
     "introVideo": "今天我们要分享的是.mov",
-    "introVoice": "今天我们分享的是.mp3",
     "mechanicalSfx": "机械音效.mp3",
     "waterDropSfx": "水滴音效.mp3",
     "textStartSfx": "正文开头音效.mp3",
