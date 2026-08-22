@@ -11,6 +11,243 @@ import {
   validateBodyCues,
 } from "../lib/opening-workflow.mjs";
 
+const draftPlanModule = await import("../lib/draft-plan.mjs").catch(() => ({}));
+const {
+  buildV3DraftPlan,
+  compactPaths,
+  normalizeDraftTimeline,
+} = draftPlanModule;
+
+function createV3Workflow(fixedMaterials = {}) {
+  return {
+    schemaVersion: 3,
+    projectName: "测试项目",
+    aspect: "3:4",
+    canvas: { width: 720, height: 960 },
+    timeline: {
+      introStartUs: 0,
+      introEndUs: 2_000_000,
+      titleStartUs: 2_000_000,
+      titleEndUs: 3_000_000,
+      bodyStartUs: 3_000_000,
+      bodyEndUs: 11_000_000,
+      totalDurationUs: 11_000_000,
+    },
+    inputs: {
+      introVoice: "intro.mp3",
+      titleVoice: "title.mp3",
+      bodyVoice: "body.mp3",
+    },
+    fixedMaterials: {
+      bgm: "",
+      mechanicalSfx: "",
+      waterDropSfx: "",
+      textStartSfx: "",
+      ...fixedMaterials,
+    },
+  };
+}
+
+test("草稿计划模块导出动态轨道和时间线工具", () => {
+  assert.equal(typeof buildV3DraftPlan, "function");
+  assert.equal(typeof compactPaths, "function");
+  assert.equal(typeof normalizeDraftTimeline, "function");
+});
+
+test("schema v3 草稿计划只列出实际存在的轨道和去重素材", () => {
+  const workflow = createV3Workflow({ mechanicalSfx: "mechanical.mp3" });
+  const plan = buildV3DraftPlan({
+    workflow,
+    openingPlan: {
+      mode: "flash",
+      video: null,
+      coverFill: null,
+      flashSegments: [{ filePath: "flash.png", start: 0, end: 2_000_000 }],
+    },
+    sceneFiles: ["scene.png", "scene.png"],
+    coverFiles: { full: "full-cover.png", cover: "cover.png" },
+    hasEnglish: false,
+    hasAuthor: true,
+    hasNickname: false,
+    hasSourceNote: false,
+    introOnly: false,
+  });
+
+  assert.deepEqual(plan, {
+    schemaVersion: 2,
+    project: "测试项目",
+    aspect: "3:4",
+    canvas: { width: 720, height: 960 },
+    tracks: {
+      video: [
+        "V1 快闪素材",
+        "V2 全画幅书籍封面",
+        "V3 正文分镜图片",
+        "V4 缩小书籍封面",
+      ],
+      text: ["T1 书名", "T2 正文中文字幕", "T3 常驻书名", "T4 作者"],
+      audio: ["A1 正文旁白", "A2 片头话术", "A3 书名配音", "A4 机械音效"],
+    },
+    sourceFiles: [
+      "flash.png",
+      "full-cover.png",
+      "cover.png",
+      "scene.png",
+      "intro.mp3",
+      "title.mp3",
+      "body.mp3",
+      "mechanical.mp3",
+    ],
+  });
+  assert.equal(plan.sourceFiles.includes(""), false);
+});
+
+test("片头视频和封面回退只生成各自实际使用的开场画面轨", () => {
+  const common = {
+    workflow: createV3Workflow(),
+    sceneFiles: [],
+    coverFiles: { full: "full-cover.png", cover: "cover.png" },
+    hasEnglish: false,
+    hasAuthor: false,
+    hasNickname: false,
+    hasSourceNote: false,
+    introOnly: false,
+  };
+  const videoPlan = buildV3DraftPlan({
+    ...common,
+    openingPlan: {
+      mode: "video",
+      video: { filePath: "intro.mov", start: 0, end: 2_000_000 },
+      coverFill: null,
+      flashSegments: [],
+    },
+  });
+  const coverPlan = buildV3DraftPlan({
+    ...common,
+    openingPlan: {
+      mode: "cover",
+      video: null,
+      coverFill: { start: 0, end: 2_000_000 },
+      flashSegments: [],
+    },
+  });
+
+  assert.equal(videoPlan.tracks.video[0], "V1 片头 MOV");
+  assert.equal(videoPlan.sourceFiles.includes("intro.mov"), true);
+  assert.deepEqual(coverPlan.tracks.video, [
+    "V1 全画幅书籍封面",
+    "V2 缩小书籍封面",
+  ]);
+  assert.equal(coverPlan.tracks.video.some((name) => /快闪|MOV/u.test(name)), false);
+});
+
+test("intro-only 草稿排除正文素材并保留实际开头音画", () => {
+  const plan = buildV3DraftPlan({
+    workflow: createV3Workflow({
+      bgm: "bgm.mp3",
+      mechanicalSfx: "mechanical.mp3",
+      waterDropSfx: "water.mp3",
+      textStartSfx: "text-start.mp3",
+    }),
+    openingPlan: {
+      mode: "cover",
+      video: null,
+      coverFill: { start: 0, end: 2_000_000 },
+      flashSegments: [],
+    },
+    sceneFiles: ["scene.png"],
+    coverFiles: { full: "full-cover.png", cover: "cover.png" },
+    hasEnglish: true,
+    hasAuthor: true,
+    hasNickname: false,
+    hasSourceNote: false,
+    introOnly: true,
+  });
+
+  assert.deepEqual(plan.tracks.video, ["V1 全画幅书籍封面"]);
+  assert.deepEqual(plan.tracks.text, ["T1 书名"]);
+  assert.deepEqual(plan.tracks.audio, [
+    "A1 背景音乐",
+    "A2 片头话术",
+    "A3 书名配音",
+    "A4 机械音效",
+    "A5 水滴音效",
+  ]);
+  for (const excluded of ["body.mp3", "scene.png", "cover.png", "text-start.mp3"]) {
+    assert.equal(plan.sourceFiles.includes(excluded), false, `${excluded} should be excluded`);
+  }
+  assert.deepEqual(plan.sourceFiles, [
+    "full-cover.png",
+    "intro.mp3",
+    "title.mp3",
+    "bgm.mp3",
+    "mechanical.mp3",
+    "water.mp3",
+  ]);
+});
+
+test("compactPaths 过滤非字符串和空串并稳定去重", () => {
+  assert.deepEqual(compactPaths([
+    "first.png",
+    "",
+    null,
+    "second.png",
+    "first.png",
+    42,
+    "   ",
+    "second.png",
+  ]), ["first.png", "second.png"]);
+});
+
+test("schema v3 时间线直接归一化三段语音边界", () => {
+  assert.deepEqual(normalizeDraftTimeline(createV3Workflow(), []), {
+    introEndUs: 2_000_000,
+    titleStartUs: 2_000_000,
+    titleEndUs: 3_000_000,
+    bodyAudioStartUs: 3_000_000,
+    firstBodySentenceStartUs: 3_000_000,
+    totalEndUs: 11_000_000,
+  });
+});
+
+test("schema v2 时间线从旧字幕恢复书名和正文切换点", () => {
+  const workflow = {
+    schemaVersion: 2,
+    intro: { durationUs: 4_000_000, captionOffsetUs: 2_000_000 },
+    totalDurationUs: 12_000_000,
+  };
+  const shiftedCues = [
+    { startUs: 2_000_000, endUs: 3_000_000, text: "测试书" },
+    { startUs: 3_200_000, endUs: 5_000_000, text: "第一句正文" },
+  ];
+
+  assert.deepEqual(normalizeDraftTimeline(workflow, shiftedCues), {
+    introEndUs: 4_000_000,
+    titleStartUs: 2_000_000,
+    titleEndUs: 3_000_000,
+    bodyAudioStartUs: 2_000_000,
+    firstBodySentenceStartUs: 3_200_000,
+    totalEndUs: 12_000_000,
+  });
+});
+
+test("schema v2 无字幕时沿用旧草稿的片头时长回退", () => {
+  const workflow = {
+    schemaVersion: 2,
+    intro: { durationUs: 4_000_000, captionOffsetUs: 2_000_000 },
+    totalDurationUs: 12_000_000,
+  };
+
+  assert.deepEqual(normalizeDraftTimeline(workflow, []), {
+    introEndUs: 4_000_000,
+    titleStartUs: 2_000_000,
+    titleEndUs: 4_000_000,
+    bodyAudioStartUs: 2_000_000,
+    firstBodySentenceStartUs: 4_000_000,
+    totalEndUs: 12_000_000,
+  });
+});
+
 test("schema v3 时间线依次衔接片头、书名和正文", () => {
   assert.deepEqual(buildV3Timeline({
     introVoiceDurationUs: 2_000_000,

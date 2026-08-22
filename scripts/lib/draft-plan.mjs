@@ -1,0 +1,115 @@
+function numberedTracks(prefix, labels) {
+  return labels.map((label, index) => `${prefix}${index + 1} ${label}`);
+}
+
+function normalizeCoverFiles(coverFiles) {
+  if (Array.isArray(coverFiles)) {
+    return { full: coverFiles[0], cover: coverFiles[1] };
+  }
+  return {
+    full: coverFiles?.full ?? coverFiles?.fullCover ?? coverFiles?.fullCoverPath,
+    cover: coverFiles?.cover ?? coverFiles?.bookCover ?? coverFiles?.bookCoverPath,
+  };
+}
+
+export function compactPaths(paths) {
+  return [...new Set(paths.filter((value) => typeof value === "string" && value.trim()))];
+}
+
+export function normalizeDraftTimeline(workflow, shiftedCues = []) {
+  if (Number(workflow?.schemaVersion) >= 3) {
+    const timeline = workflow.timeline || {};
+    return {
+      introEndUs: timeline.introEndUs,
+      titleStartUs: timeline.titleStartUs,
+      titleEndUs: timeline.titleEndUs,
+      bodyAudioStartUs: timeline.bodyStartUs,
+      firstBodySentenceStartUs: timeline.bodyStartUs,
+      totalEndUs: timeline.totalDurationUs,
+    };
+  }
+
+  const introEndUs = workflow?.intro?.durationUs;
+  const titleStartUs = workflow?.intro?.captionOffsetUs;
+  const cues = Array.isArray(shiftedCues) ? shiftedCues : [];
+  return {
+    introEndUs,
+    titleStartUs,
+    titleEndUs: cues[0]?.endUs || introEndUs,
+    bodyAudioStartUs: titleStartUs,
+    firstBodySentenceStartUs: cues[1]?.startUs || introEndUs,
+    totalEndUs: workflow?.totalDurationUs,
+  };
+}
+
+export function buildV3DraftPlan({
+  workflow,
+  openingPlan,
+  sceneFiles = [],
+  coverFiles = {},
+  hasEnglish = false,
+  hasAuthor = false,
+  hasNickname = false,
+  hasSourceNote = false,
+  introOnly = false,
+}) {
+  const fixedMaterials = workflow.fixedMaterials || {};
+  const inputs = workflow.inputs || {};
+  const bodyVoice = inputs.bodyVoice ?? inputs.voice;
+  const covers = normalizeCoverFiles(coverFiles);
+  const flashFiles = (openingPlan?.flashSegments || []).map((segment) => segment?.filePath);
+  const hasOpeningVideo = Boolean(openingPlan?.video?.filePath);
+  const hasFlashImages = flashFiles.some((filePath) => typeof filePath === "string" && filePath.trim());
+
+  const videoLabels = [];
+  if (openingPlan?.mode === "video" && hasOpeningVideo) videoLabels.push("片头 MOV");
+  if (openingPlan?.mode === "flash" && hasFlashImages) videoLabels.push("快闪素材");
+  if (typeof covers.full === "string" && covers.full.trim()) videoLabels.push("全画幅书籍封面");
+  if (!introOnly && compactPaths(sceneFiles).length) videoLabels.push("正文分镜图片");
+  if (!introOnly && typeof covers.cover === "string" && covers.cover.trim()) videoLabels.push("缩小书籍封面");
+
+  const textLabels = ["书名"];
+  if (!introOnly) {
+    textLabels.push("正文中文字幕");
+    if (hasEnglish) textLabels.push("英文字幕");
+    textLabels.push("常驻书名");
+    if (hasAuthor) textLabels.push("作者");
+    if (hasNickname) textLabels.push("昵称");
+    if (hasSourceNote) textLabels.push("来源说明");
+  }
+
+  const audioLabels = [];
+  if (!introOnly && bodyVoice) audioLabels.push("正文旁白");
+  if (fixedMaterials.bgm) audioLabels.push("背景音乐");
+  if (inputs.introVoice) audioLabels.push("片头话术");
+  if (inputs.titleVoice) audioLabels.push("书名配音");
+  if (fixedMaterials.mechanicalSfx) audioLabels.push("机械音效");
+  if (fixedMaterials.waterDropSfx) audioLabels.push("水滴音效");
+  if (!introOnly && fixedMaterials.textStartSfx) audioLabels.push("正文开头音效");
+
+  return {
+    schemaVersion: 2,
+    project: workflow.projectName ?? workflow.project,
+    aspect: workflow.aspect,
+    canvas: workflow.canvas,
+    tracks: {
+      video: numberedTracks("V", videoLabels),
+      text: numberedTracks("T", textLabels),
+      audio: numberedTracks("A", audioLabels),
+    },
+    sourceFiles: compactPaths([
+      openingPlan?.video?.filePath,
+      ...flashFiles,
+      covers.full,
+      ...(!introOnly ? [covers.cover] : []),
+      ...(!introOnly ? sceneFiles : []),
+      inputs.introVoice,
+      inputs.titleVoice,
+      ...(!introOnly ? [bodyVoice] : []),
+      fixedMaterials.bgm,
+      fixedMaterials.mechanicalSfx,
+      fixedMaterials.waterDropSfx,
+      ...(!introOnly ? [fixedMaterials.textStartSfx] : []),
+    ]),
+  };
+}
