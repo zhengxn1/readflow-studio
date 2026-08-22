@@ -15,6 +15,7 @@ const scriptFiles = [
   "scripts/lib/capcut-mate-client.mjs",
   "scripts/lib/media-server.mjs",
   "scripts/lib/obsidian-books.mjs",
+  "scripts/lib/opening-workflow.mjs",
   "scripts/lib/srt.mjs",
   "scripts/lib/storyboard.mjs",
   "scripts/lib/visual-direction.mjs",
