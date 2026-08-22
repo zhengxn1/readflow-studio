@@ -145,7 +145,7 @@ const audioDurations = isV3
       bgm: optionalDurationUs(fixedMaterials.bgm),
       mechanicalSfx: optionalDurationUs(fixedMaterials.mechanicalSfx),
       waterDropSfx: optionalDurationUs(fixedMaterials.waterDropSfx),
-      textStartSfx: optionalDurationUs(fixedMaterials.textStartSfx),
+      textStartSfx: introOnly ? 0 : optionalDurationUs(fixedMaterials.textStartSfx),
     }
   : {
       bodyVoice: probeDurationUs(bodyVoicePath),

@@ -358,6 +358,60 @@ test("prepare and draft support a schema v3 project with optional opening assets
       assert.equal(draftPlan.sourceFiles.includes(removedPath), false);
     }
 
+    const badTextStart = path.join(tempDir, "bad-text-start.mp3");
+    fs.writeFileSync(badTextStart, "");
+    workflow.fixedMaterials = {
+      bgm: "",
+      introVideo: "",
+      mechanicalSfx: "",
+      waterDropSfx: "",
+      textStartSfx: badTextStart,
+      flashDir: "",
+    };
+    fs.writeFileSync(workflowPath, `${JSON.stringify(workflow, null, 2)}\n`);
+    const badTextIntroOnlyResult = spawnSync(process.execPath, [
+      "scripts/create-jianying-draft.mjs",
+      "--project", projectName,
+      "--config", configPath,
+      "--intro-only",
+      "--dry-run",
+    ], {
+      cwd: ROOT,
+      encoding: "utf8",
+      shell: false,
+    });
+    assert.equal(
+      badTextIntroOnlyResult.status,
+      0,
+      [badTextIntroOnlyResult.stdout, badTextIntroOnlyResult.stderr].filter(Boolean).join("\n"),
+    );
+    const badTextIntroOnlyPlan = JSON.parse(fs.readFileSync(
+      path.join(episodeDir, "draft-plan.json"),
+      "utf8",
+    ));
+    assert.equal(
+      badTextIntroOnlyPlan.tracks.audio.some((track) => track.includes("正文开头音效")),
+      false,
+    );
+    assert.equal(badTextIntroOnlyPlan.sourceFiles.includes(badTextStart), false);
+
+    const badTextFullResult = spawnSync(process.execPath, [
+      "scripts/create-jianying-draft.mjs",
+      "--project", projectName,
+      "--config", configPath,
+      "--dry-run",
+    ], {
+      cwd: ROOT,
+      encoding: "utf8",
+      shell: false,
+    });
+    assert.notEqual(badTextFullResult.status, 0);
+    assert.match(
+      [badTextFullResult.stdout, badTextFullResult.stderr].filter(Boolean).join("\n"),
+      new RegExp(`无法读取素材时长|${path.basename(badTextStart)}`, "u"),
+    );
+
+    workflow.fixedMaterials = { ...removedOptionalMaterials };
     const badBgm = path.join(tempDir, "bad-bgm.mp3");
     fs.writeFileSync(badBgm, "not valid audio");
     workflow.fixedMaterials.bgm = badBgm;
