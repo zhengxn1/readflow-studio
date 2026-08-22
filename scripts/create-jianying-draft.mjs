@@ -7,6 +7,8 @@ import { loadWorkflowConfig, loadLayout, parseCliArgs } from "./lib/workflow-con
 import { cuesToCapcut } from "./lib/srt.mjs";
 import { startMediaServer } from "./lib/media-server.mjs";
 import { CapcutMateClient } from "./lib/capcut-mate-client.mjs";
+import { buildOpeningVisualPlan, collectFlashImages } from "./lib/opening-workflow.mjs";
+import { buildV3DraftPlan, normalizeDraftTimeline } from "./lib/draft-plan.mjs";
 
 const ROOT = process.cwd();
 const args = parseCliArgs(process.argv.slice(2));
@@ -26,13 +28,6 @@ function probeDurationUs(filePath) {
   const seconds = Number(result.stdout?.trim());
   if (result.status !== 0 || !Number.isFinite(seconds) || seconds <= 0) throw new Error(`无法读取素材时长：${filePath}`);
   return Math.round(seconds * 1_000_000);
-}
-
-function collectFlashImages(directory) {
-  return fs.readdirSync(directory)
-    .filter((name) => /\.(png|jpe?g|webp)$/i.test(name))
-    .sort((a, b) => a.localeCompare(b, "zh-CN", { numeric: true }))
-    .map((name) => path.join(directory, name));
 }
 
 function capAudio(url, start, sourceDurationUs, end, volume) {
@@ -68,6 +63,7 @@ const episodeDir = path.join(ROOT, "episodes", args.project);
 const workflowPath = path.join(episodeDir, "workflow.json");
 if (!fs.existsSync(workflowPath)) throw new Error(`找不到工作流项目：${workflowPath}`);
 const workflow = readJson(workflowPath);
+const isV3 = Number(workflow.schemaVersion) >= 3;
 const resolveEpisodeAsset = (value) => value && (path.isAbsolute(value) ? value : path.join(episodeDir, value));
 const layout = loadLayout(ROOT, workflow.aspect);
 const scenes = readJson(resolveEpisodeAsset(workflow.generated.storyboard));
@@ -76,13 +72,21 @@ const shiftedEnglishPath = resolveEpisodeAsset(workflow.generated.shiftedEnglish
 const shiftedEnglishCues = shiftedEnglishPath && fs.existsSync(shiftedEnglishPath)
   ? readJson(shiftedEnglishPath)
   : [];
-const bodyVoicePath = resolveEpisodeAsset(workflow.inputs.voice);
+const fixedMaterials = workflow.fixedMaterials || {};
+const bodyVoicePath = resolveEpisodeAsset(workflow.inputs.voice || workflow.inputs.bodyVoice);
+const introVoicePath = isV3
+  ? resolveEpisodeAsset(workflow.inputs.introVoice)
+  : fixedMaterials.introVoice;
+const titleVoicePath = isV3 ? resolveEpisodeAsset(workflow.inputs.titleVoice) : "";
 const bookCoverPath = resolveEpisodeAsset(workflow.inputs.cover);
 const fullBookCoverPath = resolveEpisodeAsset(workflow.inputs.fullCover) || bookCoverPath;
 const introOnly = args["intro-only"] === true;
-const timelineEndUs = introOnly ? workflow.intro.durationUs : workflow.totalDurationUs;
-const flashImages = collectFlashImages(workflow.fixedMaterials.flashDir);
-if (!flashImages.length) throw new Error(`快闪素材目录没有图片：${workflow.fixedMaterials.flashDir}`);
+const draftTimeline = normalizeDraftTimeline(workflow, shiftedCues);
+const timelineEndUs = isV3
+  ? (introOnly ? workflow.timeline.bodyStartUs : workflow.totalDurationUs)
+  : (introOnly ? workflow.intro.durationUs : workflow.totalDurationUs);
+const flashImages = collectFlashImages(fixedMaterials.flashDir);
+if (!isV3 && !flashImages.length) throw new Error(`快闪素材目录没有图片：${fixedMaterials.flashDir}`);
 
 const sceneFiles = (introOnly ? [] : scenes).map((scene) => {
   const expected = path.join(episodeDir, "images", scene.imageFile);
@@ -92,54 +96,109 @@ const sceneFiles = (introOnly ? [] : scenes).map((scene) => {
 });
 
 const allFiles = [
-  workflow.fixedMaterials.introVideo,
+  fixedMaterials.introVideo,
   ...flashImages,
   ...sceneFiles,
   fullBookCoverPath,
   bookCoverPath,
   bodyVoicePath,
-  workflow.fixedMaterials.bgm,
-  workflow.fixedMaterials.introVoice,
-  workflow.fixedMaterials.mechanicalSfx,
-  workflow.fixedMaterials.waterDropSfx,
-  workflow.fixedMaterials.textStartSfx,
+  fixedMaterials.bgm,
+  fixedMaterials.introVoice,
+  fixedMaterials.mechanicalSfx,
+  fixedMaterials.waterDropSfx,
+  fixedMaterials.textStartSfx,
 ];
 
-const audioDurations = {
-  bodyVoice: probeDurationUs(bodyVoicePath),
-  bgm: probeDurationUs(workflow.fixedMaterials.bgm),
-  introVoice: probeDurationUs(workflow.fixedMaterials.introVoice),
-  mechanicalSfx: probeDurationUs(workflow.fixedMaterials.mechanicalSfx),
-  waterDropSfx: probeDurationUs(workflow.fixedMaterials.waterDropSfx),
-  textStartSfx: probeDurationUs(workflow.fixedMaterials.textStartSfx),
-};
+const hasFilePath = (filePath) => typeof filePath === "string" && Boolean(filePath.trim());
+const optionalDurationUs = (filePath) => (hasFilePath(filePath) ? probeDurationUs(filePath) : 0);
+const audioDurations = isV3
+  ? {
+      bodyVoice: probeDurationUs(bodyVoicePath),
+      introVoice: probeDurationUs(introVoicePath),
+      titleVoice: probeDurationUs(titleVoicePath),
+      bgm: optionalDurationUs(fixedMaterials.bgm),
+      mechanicalSfx: optionalDurationUs(fixedMaterials.mechanicalSfx),
+      waterDropSfx: optionalDurationUs(fixedMaterials.waterDropSfx),
+      textStartSfx: optionalDurationUs(fixedMaterials.textStartSfx),
+    }
+  : {
+      bodyVoice: probeDurationUs(bodyVoicePath),
+      bgm: probeDurationUs(fixedMaterials.bgm),
+      introVoice: probeDurationUs(fixedMaterials.introVoice),
+      mechanicalSfx: probeDurationUs(fixedMaterials.mechanicalSfx),
+      waterDropSfx: probeDurationUs(fixedMaterials.waterDropSfx),
+      textStartSfx: probeDurationUs(fixedMaterials.textStartSfx),
+    };
 
-const intro = {
+const intro = isV3 ? null : {
   videoDurationUs: Number(workflow.intro.videoDurationUs || audioDurations.introVoice),
   flashStartUs: Number(workflow.intro.flashStartUs || 0),
   flashEndUs: Number(workflow.intro.flashEndUs || workflow.intro.flashDurationUs || 1_080_000),
   coverStartUs: Number(workflow.intro.coverStartUs || workflow.intro.flashEndUs || 1_080_000),
   captionOffsetUs: Number(workflow.intro.captionOffsetUs || workflow.intro.coverStartUs || workflow.intro.durationUs),
 };
-const flashDurationUs = Math.floor((intro.flashEndUs - intro.flashStartUs) / flashImages.length);
-const plan = {
-  schemaVersion: 1,
-  project: workflow.projectName,
-  aspect: workflow.aspect,
-  canvas: workflow.canvas,
-  timeline: {
-    introEndUs: workflow.intro.durationUs,
-    bodyStartUs: intro.captionOffsetUs,
-    totalEndUs: timelineEndUs,
-  },
-  tracks: {
-    video: ["V1 片头 MOV", "V2 快闪素材", "V3 全画幅书籍封面", "V4 正文分镜图片", "V5 缩小书籍封面"],
-    text: ["T1 正文中文字幕", "T2 英文字幕", "T3 书名", "T4 作者", "T5 昵称", "T6 来源说明"],
-    audio: ["A1 正文旁白", "A2 背景音乐", "A3 片头语音", "A4 机械音效", "A5 水滴音效", "A6 正文开头音效"],
-  },
-  styles: layout.style,
-  sourceFiles: allFiles,
-};
+const flashDurationUs = isV3
+  ? 0
+  : Math.floor((intro.flashEndUs - intro.flashStartUs) / flashImages.length);
+const openingPlan = isV3
+  ? buildOpeningVisualPlan({
+      flashImages,
+      introVideo: fixedMaterials.introVideo,
+      introVideoDurationUs: workflow.opening.introVideoDurationUs,
+      introEndUs: draftTimeline.introEndUs,
+    })
+  : null;
+const d = config.defaults || {};
+const plan = isV3
+  ? {
+      ...buildV3DraftPlan({
+        workflow: {
+          ...workflow,
+          inputs: {
+            ...workflow.inputs,
+            introVoice: introVoicePath,
+            titleVoice: titleVoicePath,
+            voice: bodyVoicePath,
+            bodyVoice: bodyVoicePath,
+          },
+          fixedMaterials: { ...fixedMaterials },
+        },
+        openingPlan,
+        sceneFiles,
+        coverFiles: { full: fullBookCoverPath, cover: bookCoverPath },
+        hasEnglish: shiftedEnglishCues.length > 0,
+        hasAuthor: Boolean(workflow.book.author),
+        hasNickname: Boolean(d.nickname),
+        hasSourceNote: Boolean(d.sourceNote),
+        introOnly,
+      }),
+      timeline: {
+        introEndUs: draftTimeline.introEndUs,
+        titleStartUs: draftTimeline.titleStartUs,
+        titleEndUs: draftTimeline.titleEndUs,
+        bodyStartUs: draftTimeline.bodyAudioStartUs,
+        totalEndUs: timelineEndUs,
+      },
+      styles: layout.style,
+    }
+  : {
+      schemaVersion: 1,
+      project: workflow.projectName,
+      aspect: workflow.aspect,
+      canvas: workflow.canvas,
+      timeline: {
+        introEndUs: workflow.intro.durationUs,
+        bodyStartUs: intro.captionOffsetUs,
+        totalEndUs: timelineEndUs,
+      },
+      tracks: {
+        video: ["V1 片头 MOV", "V2 快闪素材", "V3 全画幅书籍封面", "V4 正文分镜图片", "V5 缩小书籍封面"],
+        text: ["T1 正文中文字幕", "T2 英文字幕", "T3 书名", "T4 作者", "T5 昵称", "T6 来源说明"],
+        audio: ["A1 正文旁白", "A2 背景音乐", "A3 片头语音", "A4 机械音效", "A5 水滴音效", "A6 正文开头音效"],
+      },
+      styles: layout.style,
+      sourceFiles: allFiles,
+    };
 fs.writeFileSync(path.join(episodeDir, "draft-plan.json"), `${JSON.stringify(plan, null, 2)}\n`);
 
 if (args["dry-run"]) {
@@ -147,32 +206,51 @@ if (args["dry-run"]) {
   process.exit(0);
 }
 
-const mediaServer = await startMediaServer(allFiles, {
+const mediaFiles = isV3 ? plan.sourceFiles : allFiles;
+const mediaServer = await startMediaServer(mediaFiles, {
   host: config.capcutMate.mediaHost,
   port: config.capcutMate.mediaPort,
 });
 const client = new CapcutMateClient(config.capcutMate.baseUrl);
-const d = config.defaults || {};
 
 try {
   const created = await client.createDraft(workflow.canvas.width, workflow.canvas.height);
   const draftUrl = created.draft_url;
   if (!draftUrl) throw new Error("CapCut Mate 创建草稿后没有返回 draft_url");
 
-  await client.addVideos(draftUrl, [{
-    video_url: mediaServer.urlFor(workflow.fixedMaterials.introVideo),
-    start: 0,
-    end: intro.videoDurationUs,
-    duration: intro.videoDurationUs,
-    volume: 0,
-  }]);
+  if (isV3) {
+    if (openingPlan.video) {
+      await client.addVideos(draftUrl, [{
+        video_url: mediaServer.urlFor(openingPlan.video.filePath),
+        start: openingPlan.video.start,
+        end: openingPlan.video.end,
+        duration: workflow.opening.introVideoDurationUs,
+        volume: 0,
+      }]);
+    }
+    if (openingPlan.flashSegments.length) {
+      await client.addImages(draftUrl, openingPlan.flashSegments.map((segment) => ({
+        image_url: mediaServer.urlFor(segment.filePath),
+        start: segment.start,
+        end: segment.end,
+      })), { scaleX: 1, scaleY: 1 });
+    }
+  } else {
+    await client.addVideos(draftUrl, [{
+      video_url: mediaServer.urlFor(fixedMaterials.introVideo),
+      start: 0,
+      end: intro.videoDurationUs,
+      duration: intro.videoDurationUs,
+      volume: 0,
+    }]);
 
-  const flashInfos = flashImages.map((filePath, index) => ({
-    image_url: mediaServer.urlFor(filePath),
-    start: intro.flashStartUs + index * flashDurationUs,
-    end: index === flashImages.length - 1 ? intro.flashEndUs : intro.flashStartUs + (index + 1) * flashDurationUs,
-  }));
-  await client.addImages(draftUrl, flashInfos, { scaleX: 1, scaleY: 1 });
+    const flashInfos = flashImages.map((filePath, index) => ({
+      image_url: mediaServer.urlFor(filePath),
+      start: intro.flashStartUs + index * flashDurationUs,
+      end: index === flashImages.length - 1 ? intro.flashEndUs : intro.flashStartUs + (index + 1) * flashDurationUs,
+    }));
+    await client.addImages(draftUrl, flashInfos, { scaleX: 1, scaleY: 1 });
+  }
 
   let coverAnimation = d.coverAnimation || "水滴遮罩";
   let smallCoverAnimation = d.smallCoverAnimation || "点开";
@@ -193,25 +271,55 @@ try {
     smallCoverAnimation = null;
   }
 
-  const bookNameEndUs = shiftedCues[0]?.endUs || workflow.intro.durationUs;
-  const firstBodySentenceStartUs = shiftedCues[1]?.startUs || workflow.intro.durationUs;
-  const coverEndUs = introOnly
-    ? workflow.intro.durationUs
-    : firstBodySentenceStartUs;
-  await client.addImages(draftUrl, [{
-    image_url: mediaServer.urlFor(fullBookCoverPath),
-    start: intro.coverStartUs,
-    end: coverEndUs,
-    ...(coverAnimation ? {
-      in_animation: coverAnimation,
-      in_animation_duration: Number(d.coverAnimationDurationUs || 500_000),
-    } : {}),
-  }], {
-    scaleX: 1,
-    scaleY: 1,
-    transformX: 0,
-    transformY: 0,
-  });
+  const bookNameEndUs = isV3
+    ? draftTimeline.titleEndUs
+    : shiftedCues[0]?.endUs || workflow.intro.durationUs;
+  const firstBodySentenceStartUs = isV3
+    ? draftTimeline.firstBodySentenceStartUs
+    : shiftedCues[1]?.startUs || workflow.intro.durationUs;
+  if (isV3) {
+    const fullCoverInfos = [];
+    if (openingPlan.coverFill) {
+      fullCoverInfos.push({
+        image_url: mediaServer.urlFor(fullBookCoverPath),
+        start: openingPlan.coverFill.start,
+        end: draftTimeline.introEndUs,
+      });
+    }
+    fullCoverInfos.push({
+      image_url: mediaServer.urlFor(fullBookCoverPath),
+      start: draftTimeline.titleStartUs,
+      end: draftTimeline.bodyAudioStartUs,
+      ...(coverAnimation ? {
+        in_animation: coverAnimation,
+        in_animation_duration: Number(d.coverAnimationDurationUs || 500_000),
+      } : {}),
+    });
+    await client.addImages(draftUrl, fullCoverInfos, {
+      scaleX: 1,
+      scaleY: 1,
+      transformX: 0,
+      transformY: 0,
+    });
+  } else {
+    const coverEndUs = introOnly
+      ? workflow.intro.durationUs
+      : firstBodySentenceStartUs;
+    await client.addImages(draftUrl, [{
+      image_url: mediaServer.urlFor(fullBookCoverPath),
+      start: intro.coverStartUs,
+      end: coverEndUs,
+      ...(coverAnimation ? {
+        in_animation: coverAnimation,
+        in_animation_duration: Number(d.coverAnimationDurationUs || 500_000),
+      } : {}),
+    }], {
+      scaleX: 1,
+      scaleY: 1,
+      transformX: 0,
+      transformY: 0,
+    });
+  }
 
   const bodyImageInfos = (introOnly ? [] : scenes).map((scene, index) => ({
     image_url: mediaServer.urlFor(sceneFiles[index]),
@@ -232,7 +340,7 @@ try {
   if (!introOnly) {
     await client.addImages(draftUrl, [{
       image_url: mediaServer.urlFor(bookCoverPath),
-      start: firstBodySentenceStartUs,
+      start: isV3 ? draftTimeline.bodyAudioStartUs : firstBodySentenceStartUs,
       end: timelineEndUs,
       ...(smallCoverAnimation ? {
         in_animation: smallCoverAnimation,
@@ -246,62 +354,147 @@ try {
     });
   }
 
-  await client.addAudios(draftUrl, [capAudio(
-    mediaServer.urlFor(bodyVoicePath),
-    intro.captionOffsetUs,
-    audioDurations.bodyVoice,
-    introOnly ? Math.min(timelineEndUs, intro.captionOffsetUs + audioDurations.bodyVoice) : intro.captionOffsetUs + audioDurations.bodyVoice,
-    Number(d.bodyVoiceVolume ?? 1),
-  )]);
-  const bgmInfos = [];
-  for (let start = 0; start < timelineEndUs; start += audioDurations.bgm) {
-    bgmInfos.push(capAudio(
-      mediaServer.urlFor(workflow.fixedMaterials.bgm),
-      start,
-      audioDurations.bgm,
-      Math.min(timelineEndUs, start + audioDurations.bgm),
-      Number(d.bgmVolume ?? 0.25),
-    ));
-  }
-  await client.addAudios(draftUrl, bgmInfos);
-  await client.addAudios(draftUrl, [capAudio(
-    mediaServer.urlFor(workflow.fixedMaterials.introVoice), 0, audioDurations.introVoice,
-    Math.min(workflow.intro.durationUs, audioDurations.introVoice), Number(d.introVoiceVolume ?? 1),
-  )]);
-  await client.addAudios(draftUrl, [capAudio(
-    mediaServer.urlFor(workflow.fixedMaterials.mechanicalSfx), intro.flashStartUs, audioDurations.mechanicalSfx,
-    Math.min(workflow.intro.durationUs, intro.flashStartUs + audioDurations.mechanicalSfx), Number(d.sfxVolume ?? 1),
-  )]);
-  await client.addAudios(draftUrl, [capAudio(
-    mediaServer.urlFor(workflow.fixedMaterials.waterDropSfx), intro.coverStartUs, audioDurations.waterDropSfx,
-    Math.min(timelineEndUs, intro.coverStartUs + audioDurations.waterDropSfx), Number(d.sfxVolume ?? 1),
-  )]);
-  if (!introOnly) {
+  if (isV3) {
+    if (!introOnly) {
+      await client.addAudios(draftUrl, [capAudio(
+        mediaServer.urlFor(bodyVoicePath),
+        draftTimeline.bodyAudioStartUs,
+        audioDurations.bodyVoice,
+        Math.min(timelineEndUs, draftTimeline.bodyAudioStartUs + audioDurations.bodyVoice),
+        Number(d.bodyVoiceVolume ?? 1),
+      )]);
+    }
+    if (hasFilePath(fixedMaterials.bgm)) {
+      const bgmInfos = [];
+      for (let start = 0; start < timelineEndUs; start += audioDurations.bgm) {
+        bgmInfos.push(capAudio(
+          mediaServer.urlFor(fixedMaterials.bgm),
+          start,
+          audioDurations.bgm,
+          Math.min(timelineEndUs, start + audioDurations.bgm),
+          Number(d.bgmVolume ?? 0.25),
+        ));
+      }
+      await client.addAudios(draftUrl, bgmInfos);
+    }
     await client.addAudios(draftUrl, [capAudio(
-      mediaServer.urlFor(workflow.fixedMaterials.textStartSfx), firstBodySentenceStartUs, audioDurations.textStartSfx,
-      Math.min(timelineEndUs, firstBodySentenceStartUs + audioDurations.textStartSfx), Number(d.sfxVolume ?? 1),
+      mediaServer.urlFor(introVoicePath), 0, audioDurations.introVoice,
+      draftTimeline.introEndUs, Number(d.introVoiceVolume ?? 1),
     )]);
+    await client.addAudios(draftUrl, [capAudio(
+      mediaServer.urlFor(titleVoicePath), draftTimeline.titleStartUs, audioDurations.titleVoice,
+      draftTimeline.titleEndUs, Number(d.titleVoiceVolume ?? d.bodyVoiceVolume ?? 1),
+    )]);
+    if (hasFilePath(fixedMaterials.mechanicalSfx)) {
+      await client.addAudios(draftUrl, [capAudio(
+        mediaServer.urlFor(fixedMaterials.mechanicalSfx), 0, audioDurations.mechanicalSfx,
+        Math.min(timelineEndUs, audioDurations.mechanicalSfx), Number(d.sfxVolume ?? 1),
+      )]);
+    }
+    if (hasFilePath(fixedMaterials.waterDropSfx)) {
+      await client.addAudios(draftUrl, [capAudio(
+        mediaServer.urlFor(fixedMaterials.waterDropSfx), draftTimeline.titleStartUs, audioDurations.waterDropSfx,
+        Math.min(timelineEndUs, draftTimeline.titleStartUs + audioDurations.waterDropSfx), Number(d.sfxVolume ?? 1),
+      )]);
+    }
+    if (!introOnly && hasFilePath(fixedMaterials.textStartSfx)) {
+      await client.addAudios(draftUrl, [capAudio(
+        mediaServer.urlFor(fixedMaterials.textStartSfx), draftTimeline.bodyAudioStartUs, audioDurations.textStartSfx,
+        Math.min(timelineEndUs, draftTimeline.bodyAudioStartUs + audioDurations.textStartSfx), Number(d.sfxVolume ?? 1),
+      )]);
+    }
+  } else {
+    await client.addAudios(draftUrl, [capAudio(
+      mediaServer.urlFor(bodyVoicePath),
+      intro.captionOffsetUs,
+      audioDurations.bodyVoice,
+      introOnly ? Math.min(timelineEndUs, intro.captionOffsetUs + audioDurations.bodyVoice) : intro.captionOffsetUs + audioDurations.bodyVoice,
+      Number(d.bodyVoiceVolume ?? 1),
+    )]);
+    const bgmInfos = [];
+    for (let start = 0; start < timelineEndUs; start += audioDurations.bgm) {
+      bgmInfos.push(capAudio(
+        mediaServer.urlFor(fixedMaterials.bgm),
+        start,
+        audioDurations.bgm,
+        Math.min(timelineEndUs, start + audioDurations.bgm),
+        Number(d.bgmVolume ?? 0.25),
+      ));
+    }
+    await client.addAudios(draftUrl, bgmInfos);
+    await client.addAudios(draftUrl, [capAudio(
+      mediaServer.urlFor(fixedMaterials.introVoice), 0, audioDurations.introVoice,
+      Math.min(workflow.intro.durationUs, audioDurations.introVoice), Number(d.introVoiceVolume ?? 1),
+    )]);
+    await client.addAudios(draftUrl, [capAudio(
+      mediaServer.urlFor(fixedMaterials.mechanicalSfx), intro.flashStartUs, audioDurations.mechanicalSfx,
+      Math.min(workflow.intro.durationUs, intro.flashStartUs + audioDurations.mechanicalSfx), Number(d.sfxVolume ?? 1),
+    )]);
+    await client.addAudios(draftUrl, [capAudio(
+      mediaServer.urlFor(fixedMaterials.waterDropSfx), intro.coverStartUs, audioDurations.waterDropSfx,
+      Math.min(timelineEndUs, intro.coverStartUs + audioDurations.waterDropSfx), Number(d.sfxVolume ?? 1),
+    )]);
+    if (!introOnly) {
+      await client.addAudios(draftUrl, [capAudio(
+        mediaServer.urlFor(fixedMaterials.textStartSfx), firstBodySentenceStartUs, audioDurations.textStartSfx,
+        Math.min(timelineEndUs, firstBodySentenceStartUs + audioDurations.textStartSfx), Number(d.sfxVolume ?? 1),
+      )]);
+    }
   }
 
-  if (!introOnly) await client.addCaptions(draftUrl, cuesToCapcut(shiftedCues), layout.style.bodyCaption);
-  if (!introOnly && shiftedEnglishCues.length) {
-    await client.addCaptions(draftUrl, cuesToCapcut(shiftedEnglishCues), layout.style.englishCaption);
-  }
-  if (bookNameEndUs < timelineEndUs) {
+  if (isV3) {
     await client.addCaptions(draftUrl, [{
-      start: bookNameEndUs,
-      end: timelineEndUs,
+      start: draftTimeline.titleStartUs,
+      end: draftTimeline.titleEndUs,
       text: `《${workflow.book.title}》`,
-    }], layout.style.bookTitle);
-  }
-  if (workflow.book.author && bookNameEndUs < timelineEndUs) {
-    await client.addCaptions(draftUrl, [{ start: bookNameEndUs, end: timelineEndUs, text: `${workflow.book.author}/著` }], layout.style.author);
-  }
-  if (d.nickname) {
-    await client.addCaptions(draftUrl, [{ start: 0, end: timelineEndUs, text: d.nickname }], layout.style.nickname);
-  }
-  if (d.sourceNote) {
-    await client.addCaptions(draftUrl, [{ start: 0, end: timelineEndUs, text: d.sourceNote }], layout.style.sourceNote);
+    }], layout.style.bodyCaption);
+    if (!introOnly) {
+      await client.addCaptions(draftUrl, cuesToCapcut(shiftedCues), layout.style.bodyCaption);
+      if (shiftedEnglishCues.length) {
+        await client.addCaptions(draftUrl, cuesToCapcut(shiftedEnglishCues), layout.style.englishCaption);
+      }
+      if (draftTimeline.bodyAudioStartUs < timelineEndUs) {
+        await client.addCaptions(draftUrl, [{
+          start: draftTimeline.bodyAudioStartUs,
+          end: timelineEndUs,
+          text: `《${workflow.book.title}》`,
+        }], layout.style.bookTitle);
+      }
+      if (workflow.book.author && draftTimeline.bodyAudioStartUs < timelineEndUs) {
+        await client.addCaptions(draftUrl, [{
+          start: draftTimeline.bodyAudioStartUs,
+          end: timelineEndUs,
+          text: `${workflow.book.author}/著`,
+        }], layout.style.author);
+      }
+      if (d.nickname) {
+        await client.addCaptions(draftUrl, [{ start: 0, end: timelineEndUs, text: d.nickname }], layout.style.nickname);
+      }
+      if (d.sourceNote) {
+        await client.addCaptions(draftUrl, [{ start: 0, end: timelineEndUs, text: d.sourceNote }], layout.style.sourceNote);
+      }
+    }
+  } else {
+    if (!introOnly) await client.addCaptions(draftUrl, cuesToCapcut(shiftedCues), layout.style.bodyCaption);
+    if (!introOnly && shiftedEnglishCues.length) {
+      await client.addCaptions(draftUrl, cuesToCapcut(shiftedEnglishCues), layout.style.englishCaption);
+    }
+    if (bookNameEndUs < timelineEndUs) {
+      await client.addCaptions(draftUrl, [{
+        start: bookNameEndUs,
+        end: timelineEndUs,
+        text: `《${workflow.book.title}》`,
+      }], layout.style.bookTitle);
+    }
+    if (workflow.book.author && bookNameEndUs < timelineEndUs) {
+      await client.addCaptions(draftUrl, [{ start: bookNameEndUs, end: timelineEndUs, text: `${workflow.book.author}/著` }], layout.style.author);
+    }
+    if (d.nickname) {
+      await client.addCaptions(draftUrl, [{ start: 0, end: timelineEndUs, text: d.nickname }], layout.style.nickname);
+    }
+    if (d.sourceNote) {
+      await client.addCaptions(draftUrl, [{ start: 0, end: timelineEndUs, text: d.sourceNote }], layout.style.sourceNote);
+    }
   }
 
   const saved = await client.saveDraft(draftUrl);

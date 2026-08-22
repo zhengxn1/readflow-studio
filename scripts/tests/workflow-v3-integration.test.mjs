@@ -30,7 +30,7 @@ function createSilentMp3(filePath, durationSeconds) {
   ]);
 }
 
-test("prepare creates a schema v3 project with three independent voice inputs", () => {
+test("prepare and draft support a schema v3 project with optional opening assets", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "readflow-v3-"));
   const projectName = `workflow-v3-${process.pid}-${Date.now()}`;
   const episodeDir = path.join(ROOT, "episodes", projectName);
@@ -132,6 +132,47 @@ test("prepare creates a schema v3 project with three independent voice inputs", 
       "utf8",
     ));
     assert.equal(storyboard.some((scene) => scene.text.includes("第一句正文")), true);
+
+    for (const [index, scene] of storyboard.entries()) {
+      assert.equal(path.basename(scene.imageFile), scene.imageFile);
+      assert.match(scene.imageFile, /\.png$/i);
+      const imagePath = path.join(episodeDir, "images", scene.imageFile);
+      fs.writeFileSync(imagePath, `placeholder-${index}`);
+    }
+
+    const draftResult = spawnSync(process.execPath, [
+      "scripts/create-jianying-draft.mjs",
+      "--project", projectName,
+      "--config", configPath,
+      "--dry-run",
+    ], {
+      cwd: ROOT,
+      encoding: "utf8",
+      shell: false,
+    });
+    assert.equal(
+      draftResult.status,
+      0,
+      [draftResult.stdout, draftResult.stderr].filter(Boolean).join("\n"),
+    );
+
+    const draftPlan = JSON.parse(fs.readFileSync(path.join(episodeDir, "draft-plan.json"), "utf8"));
+    assert.equal(draftPlan.sourceFiles.includes(""), false);
+    assert.equal(
+      draftPlan.sourceFiles.every((sourceFile) => typeof sourceFile === "string" && sourceFile.trim()),
+      true,
+    );
+    assert.deepEqual(draftPlan.tracks.audio, [
+      "A1 正文旁白",
+      "A2 片头话术",
+      "A3 书名配音",
+    ]);
+    assert.deepEqual(draftPlan.tracks.video, [
+      "V1 全画幅书籍封面",
+      "V2 正文分镜图片",
+      "V3 缩小书籍封面",
+    ]);
+    assert.equal(draftPlan.timeline.bodyStartUs, workflow.timeline.bodyStartUs);
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
     fs.rmSync(episodeDir, { recursive: true, force: true });
