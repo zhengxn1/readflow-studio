@@ -7,15 +7,21 @@ import { findObsidianBook, downloadBookCover } from "./lib/obsidian-books.mjs";
 import { parseSrt, shiftCues, formatUs, alignTranslatedCues } from "./lib/srt.mjs";
 import { buildStoryboard, storyboardMarkdown } from "./lib/storyboard.mjs";
 import { applyVisualDirections, visualDirectionRules } from "./lib/visual-direction.mjs";
-import { loadWorkflowConfig, loadLayout, parseCliArgs, resolveMaterialPath, slugifyTitle } from "./lib/workflow-config.mjs";
+import { loadWorkflowConfig, loadLayout, parseCliArgs, slugifyTitle } from "./lib/workflow-config.mjs";
+import {
+  buildV3Timeline,
+  collectFlashImages,
+  resolveOptionalMaterial,
+  validateBodyCues,
+} from "./lib/opening-workflow.mjs";
 
 const ROOT = process.cwd();
 const args = parseCliArgs(process.argv.slice(2));
 
-if (!args.book || !args.voice || !args.srt) {
+if (!args.book || !args["intro-voice"] || !args["title-voice"] || !args.voice || !args.srt) {
   console.error([
     "用法：",
-    "node scripts/prepare-jianying-workflow.mjs --book \"书名\" --voice \"正文.mp3\" --srt \"中文字幕.srt\" [--srt-en \"英文字幕.srt\" | --no-english] [--cover \"本地路径或网址\"] [--aspect 3:4] [--project \"项目名\"]",
+    "node scripts/prepare-jianying-workflow.mjs --book \"书名\" --intro-voice \"片头话术.mp3\" --title-voice \"书名配音.mp3\" --voice \"正文.mp3\" --srt \"正文中文字幕.srt\" [--srt-en \"英文字幕.srt\" | --no-english] [--cover \"本地路径或网址\"] [--aspect 3:4] [--project \"项目名\"]",
   ].join("\n"));
   process.exit(1);
 }
@@ -39,6 +45,10 @@ function copyInput(source, destination) {
   return absoluteSource;
 }
 
+function relativeManifestPath(from, to) {
+  return path.relative(from, to).split(path.sep).join("/");
+}
+
 function createFullCanvasCover(source, destination, canvas) {
   const filter = [
     `[0:v]split=2[background][foreground]`,
@@ -54,6 +64,7 @@ function createFullCanvasCover(source, destination, canvas) {
 }
 
 function markdownManifest(manifest) {
+  const optionalMaterialName = (filePath) => filePath ? path.basename(filePath) : "未启用";
   return [
     "# 素材清单",
     "",
@@ -63,16 +74,18 @@ function markdownManifest(manifest) {
     `- Obsidian 笔记：${manifest.book.notePath}`,
     `- 书籍封面：input/${path.basename(manifest.inputs.cover)}`,
     `- 全画幅封面：input/${path.basename(manifest.inputs.fullCover)}（保持原封面比例，背景适配画布）`,
+    `- 片头话术音频：input/${path.basename(manifest.inputs.introVoice)}`,
+    `- 书名配音：input/${path.basename(manifest.inputs.titleVoice)}`,
     `- 正文音频：input/${path.basename(manifest.inputs.voice)}`,
     `- 中文字幕：input/${path.basename(manifest.inputs.srt)}`,
     `- 英文字幕：${manifest.inputs.englishSrt ? `input/${path.basename(manifest.inputs.englishSrt)}` : "未提供"}`,
-    `- 水滴音效：${path.basename(manifest.fixedMaterials.waterDropSfx)}`,
-    `- 正文开头音效：${path.basename(manifest.fixedMaterials.textStartSfx)}`,
-    `- 片头时长：${(manifest.intro.durationUs / 1_000_000).toFixed(3)} 秒`,
-    `- 正文音频时长：${(manifest.body.durationUs / 1_000_000).toFixed(3)} 秒`,
+    `- 水滴音效：${optionalMaterialName(manifest.fixedMaterials.waterDropSfx)}`,
+    `- 正文开头音效：${optionalMaterialName(manifest.fixedMaterials.textStartSfx)}`,
+    `- 片头话术时长：${(manifest.opening.introVoiceDurationUs / 1_000_000).toFixed(3)} 秒`,
+    `- 书名配音时长：${(manifest.opening.titleVoiceDurationUs / 1_000_000).toFixed(3)} 秒`,
+    `- 正文时长：${(manifest.body.durationUs / 1_000_000).toFixed(3)} 秒`,
     `- 成片预计时长：${(manifest.totalDurationUs / 1_000_000).toFixed(3)} 秒`,
-    `- 字幕时间：SRT 原始时间 + ${manifest.intro.captionOffsetUs} 微秒（从书封面出现时开始）`,
-    `- 片头字幕：不显示“${manifest.intro.text}”字幕`,
+    `- 正文字幕偏移：SRT 原始时间 + ${manifest.timeline.bodyStartUs} 微秒`,
     "- 画面规则：所有图片保持宽高比；正文一分镜一张图，不按每句字幕换图。",
     "",
   ].join("\n");
@@ -81,12 +94,16 @@ function markdownManifest(manifest) {
 const { config, configPath } = loadWorkflowConfig(ROOT, args.config);
 const aspect = args.aspect || config.defaults?.aspect || "3:4";
 const layout = loadLayout(ROOT, aspect);
+const introVoiceSource = path.resolve(args["intro-voice"]);
+const titleVoiceSource = path.resolve(args["title-voice"]);
 const voiceSource = path.resolve(args.voice);
 const srtSource = path.resolve(args.srt);
 const englishSrtSource = args["srt-en"] ? path.resolve(args["srt-en"]) : "";
 const requireEnglishSubtitles = args.english === false
   ? false
   : config.defaults?.requireEnglishSubtitles !== false;
+if (!fs.existsSync(introVoiceSource)) throw new Error(`找不到片头话术音频：${introVoiceSource}`);
+if (!fs.existsSync(titleVoiceSource)) throw new Error(`找不到书名配音：${titleVoiceSource}`);
 if (!fs.existsSync(voiceSource)) throw new Error(`找不到正文音频：${voiceSource}`);
 if (!fs.existsSync(srtSource)) throw new Error(`找不到字幕文件：${srtSource}`);
 if (englishSrtSource && !fs.existsSync(englishSrtSource)) throw new Error(`找不到英文字幕文件：${englishSrtSource}`);
@@ -117,11 +134,15 @@ fs.mkdirSync(inputDir, { recursive: true });
 fs.mkdirSync(imagesDir, { recursive: true });
 fs.mkdirSync(generatedDir, { recursive: true });
 
+const introVoicePath = path.join(inputDir, "intro-voice.mp3");
+const titleVoicePath = path.join(inputDir, "title-voice.mp3");
 const voicePath = path.join(inputDir, "body-voiceover.mp3");
 const srtPath = path.join(inputDir, "body-subtitles.srt");
 const englishSrtPath = englishSrtSource ? path.join(inputDir, "body-subtitles-en.srt") : "";
 const coverPath = path.join(inputDir, "book-cover.jpg");
 const fullCoverPath = path.join(inputDir, `book-cover-full-${aspect.replace(":", "x")}.jpg`);
+copyInput(introVoiceSource, introVoicePath);
+copyInput(titleVoiceSource, titleVoicePath);
 copyInput(voiceSource, voicePath);
 copyInput(srtSource, srtPath);
 if (englishSrtSource) copyInput(englishSrtSource, englishSrtPath);
@@ -134,46 +155,41 @@ if (args.cover) {
 createFullCanvasCover(coverPath, fullCoverPath, layout.canvas);
 
 const fixedMaterials = {
-  bgm: resolveMaterialPath(config, "bgm"),
-  introVideo: resolveMaterialPath(config, "introVideo"),
-  introVoice: resolveMaterialPath(config, "introVoice"),
-  mechanicalSfx: resolveMaterialPath(config, "mechanicalSfx"),
-  waterDropSfx: resolveMaterialPath(config, "waterDropSfx"),
-  textStartSfx: resolveMaterialPath(config, "textStartSfx"),
-  flashDir: resolveMaterialPath(config, "flashDir"),
+  bgm: resolveOptionalMaterial(config, "bgm"),
+  introVideo: resolveOptionalMaterial(config, "introVideo"),
+  mechanicalSfx: resolveOptionalMaterial(config, "mechanicalSfx"),
+  waterDropSfx: resolveOptionalMaterial(config, "waterDropSfx"),
+  textStartSfx: resolveOptionalMaterial(config, "textStartSfx"),
+  flashDir: resolveOptionalMaterial(config, "flashDir", { kind: "directory" }),
 };
-const introVideoDurationUs = probeDurationUs(fixedMaterials.introVideo);
-const flashDurationUs = Number(config.defaults?.flashDurationUs ?? config.defaults?.flashEndUs ?? 1_080_000);
-const coverHoldDurationUs = Number(config.defaults?.coverHoldDurationUs ?? 1_300_000);
-const flashStartUs = introVideoDurationUs;
-const flashEndUs = flashStartUs + flashDurationUs;
-const coverStartUs = flashEndUs;
-const introDurationUs = coverStartUs + coverHoldDurationUs;
+const flashImages = collectFlashImages(fixedMaterials.flashDir);
+const introVideoDurationUs = fixedMaterials.introVideo ? probeDurationUs(fixedMaterials.introVideo) : 0;
 const cues = parseSrt(fs.readFileSync(srtPath, "utf8"));
+validateBodyCues(cues, args.book);
 const englishCues = englishSrtPath ? parseSrt(fs.readFileSync(englishSrtPath, "utf8")) : [];
 const alignedEnglishCues = englishCues.length ? alignTranslatedCues(cues, englishCues) : [];
-const captionOffsetUs = coverStartUs;
-const shiftedCues = shiftCues(cues, captionOffsetUs);
-const shiftedEnglishCues = shiftCues(alignedEnglishCues, captionOffsetUs);
-const normalizedBookTitle = String(args.book).replace(/[《》\s]/g, "");
-const firstCueIsBookTitle = String(cues[0]?.text || "").replace(/[《》\s]/g, "") === normalizedBookTitle;
-if (!firstCueIsBookTitle) {
-  throw new Error(`中文字幕第一条必须是书名《${args.book}》，以便全画幅封面、书名朗读和正文切换准确同步。`);
-}
-const storyboardCues = firstCueIsBookTitle ? cues.slice(1) : cues;
+const introVoiceDurationUs = probeDurationUs(introVoicePath);
+const titleVoiceDurationUs = probeDurationUs(titleVoicePath);
+const voiceDurationUs = probeDurationUs(voicePath);
+const bodyDurationUs = Math.max(voiceDurationUs, cues.at(-1).endUs);
+const timeline = buildV3Timeline({
+  introVoiceDurationUs,
+  titleVoiceDurationUs,
+  bodyDurationUs,
+});
+const shiftedCues = shiftCues(cues, timeline.bodyStartUs);
+const shiftedEnglishCues = shiftCues(alignedEnglishCues, timeline.bodyStartUs);
 const cueCounts = args["scene-cue-counts"]
   ? String(args["scene-cue-counts"]).split(",").map((value) => Number(value.trim()))
   : null;
-const scenes = applyVisualDirections(buildStoryboard(storyboardCues, captionOffsetUs, { cueCounts }), projectName).map((scene) => ({
+const scenes = applyVisualDirections(buildStoryboard(cues, timeline.bodyStartUs, { cueCounts }), projectName).map((scene) => ({
   ...scene,
   materialStatus: fs.existsSync(path.join(imagesDir, scene.imageFile)) ? "confirmed" : "generate",
 }));
-const voiceDurationUs = probeDurationUs(voicePath);
-const bodyDurationUs = Math.max(voiceDurationUs, cues.at(-1).endUs);
-const totalDurationUs = captionOffsetUs + bodyDurationUs;
+const totalDurationUs = timeline.totalDurationUs;
 
 const manifest = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   createdAt: new Date().toISOString(),
   configPath: path.relative(ROOT, configPath),
   projectName,
@@ -189,25 +205,23 @@ const manifest = {
     notePath: book.filePath,
     sourceCoverUrl: /^https?:\/\//iu.test(String(args.cover || book.cover)) ? String(args.cover || book.cover) : "",
   },
-  intro: {
-    text: args.intro || config.defaults?.introText || "今天我们要分享的是",
-    durationUs: introDurationUs,
-    videoDurationUs: introVideoDurationUs,
-    flashStartUs,
-    flashEndUs,
-    coverStartUs,
-    coverHoldDurationUs,
-    captionOffsetUs,
-    firstCueIsBookTitle,
+  timeline,
+  opening: {
+    introVoiceDurationUs,
+    titleVoiceDurationUs,
+    introVideoDurationUs,
+    flashImageCount: flashImages.length,
   },
   body: { durationUs: bodyDurationUs, srtCueCount: cues.length, englishSrtCueCount: englishCues.length, sceneCount: scenes.length },
   totalDurationUs,
   inputs: {
-    voice: path.relative(episodeDir, voicePath),
-    srt: path.relative(episodeDir, srtPath),
-    englishSrt: englishSrtPath ? path.relative(episodeDir, englishSrtPath) : "",
-    cover: path.relative(episodeDir, coverPath),
-    fullCover: path.relative(episodeDir, fullCoverPath),
+    introVoice: relativeManifestPath(episodeDir, introVoicePath),
+    titleVoice: relativeManifestPath(episodeDir, titleVoicePath),
+    voice: relativeManifestPath(episodeDir, voicePath),
+    srt: relativeManifestPath(episodeDir, srtPath),
+    englishSrt: englishSrtPath ? relativeManifestPath(episodeDir, englishSrtPath) : "",
+    cover: relativeManifestPath(episodeDir, coverPath),
+    fullCover: relativeManifestPath(episodeDir, fullCoverPath),
   },
   fixedMaterials,
   generated: {
@@ -285,6 +299,6 @@ console.log(JSON.stringify({
   cover: coverPath,
   captions: cues.length,
   scenes: scenes.length,
-  introOffset: formatUs(captionOffsetUs),
+  bodyOffset: formatUs(timeline.bodyStartUs),
   next: `确认分镜并补齐 images/scene-*.png 后，运行 npm run workflow:draft -- --project \"${projectName}\"`,
 }, null, 2));
