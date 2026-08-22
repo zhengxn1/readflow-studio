@@ -111,15 +111,16 @@ export function buildOpeningVisualPlan({
   requirePositiveDuration(introEndUs, "片头语音");
 
   if (flashImages.length > 0) {
-    const segmentDurationUs = introEndUs / flashImages.length;
     return {
       mode: "flash",
       video: null,
       coverFill: null,
-      flashSegments: flashImages.map((file, index) => ({
-        file,
-        startUs: index * segmentDurationUs,
-        endUs: index === flashImages.length - 1 ? introEndUs : (index + 1) * segmentDurationUs,
+      flashSegments: flashImages.map((filePath, index) => ({
+        filePath,
+        start: Math.floor((index * introEndUs) / flashImages.length),
+        end: index === flashImages.length - 1
+          ? introEndUs
+          : Math.floor(((index + 1) * introEndUs) / flashImages.length),
       })),
     };
   }
@@ -129,8 +130,8 @@ export function buildOpeningVisualPlan({
     const videoEndUs = Math.min(introVideoDurationUs, introEndUs);
     return {
       mode: "video",
-      video: { file: introVideo, startUs: 0, endUs: videoEndUs },
-      coverFill: videoEndUs < introEndUs ? { startUs: videoEndUs, endUs: introEndUs } : null,
+      video: { filePath: introVideo, start: 0, end: videoEndUs },
+      coverFill: videoEndUs < introEndUs ? { start: videoEndUs, end: introEndUs } : null,
       flashSegments: [],
     };
   }
@@ -138,7 +139,7 @@ export function buildOpeningVisualPlan({
   return {
     mode: "cover",
     video: null,
-    coverFill: { startUs: 0, endUs: introEndUs },
+    coverFill: { start: 0, end: introEndUs },
     flashSegments: [],
   };
 }

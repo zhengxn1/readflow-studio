@@ -80,11 +80,25 @@ test("快闪图片优先于 MOV 并按顺序平均铺满片头", () => {
     video: null,
     coverFill: null,
     flashSegments: [
-      { file: "1.jpg", startUs: 0, endUs: 2_000_000 },
-      { file: "2.jpg", startUs: 2_000_000, endUs: 4_000_000 },
-      { file: "3.jpg", startUs: 4_000_000, endUs: 6_000_000 },
+      { filePath: "1.jpg", start: 0, end: 2_000_000 },
+      { filePath: "2.jpg", start: 2_000_000, end: 4_000_000 },
+      { filePath: "3.jpg", start: 4_000_000, end: 6_000_000 },
     ],
   });
+});
+
+test("快闪图片按整数微秒连续铺满不可整除的片头", () => {
+  const segments = buildOpeningVisualPlan({
+    introEndUs: 10,
+    flashImages: ["1.jpg", "2.jpg", "3.jpg"],
+  }).flashSegments;
+
+  assert.deepEqual(segments, [
+    { filePath: "1.jpg", start: 0, end: 3 },
+    { filePath: "2.jpg", start: 3, end: 6 },
+    { filePath: "3.jpg", start: 6, end: 10 },
+  ]);
+  assert.ok(segments.every(({ start, end }) => Number.isInteger(start) && Number.isInteger(end)));
 });
 
 test("选择快闪时忽略无效的 MOV 时长", () => {
@@ -103,7 +117,7 @@ test("MOV 比片头长时从零播放并截断", () => {
     introVideoDurationUs: 3_000_000,
   }), {
     mode: "video",
-    video: { file: "intro.mov", startUs: 0, endUs: 2_000_000 },
+    video: { filePath: "intro.mov", start: 0, end: 2_000_000 },
     coverFill: null,
     flashSegments: [],
   });
@@ -116,8 +130,8 @@ test("MOV 比片头短时余下时段由封面补齐", () => {
     introVideoDurationUs: 750_000,
   }), {
     mode: "video",
-    video: { file: "intro.mov", startUs: 0, endUs: 750_000 },
-    coverFill: { startUs: 750_000, endUs: 2_000_000 },
+    video: { filePath: "intro.mov", start: 0, end: 750_000 },
+    coverFill: { start: 750_000, end: 2_000_000 },
     flashSegments: [],
   });
 });
@@ -126,7 +140,7 @@ test("没有快闪和 MOV 时封面铺满整个片头", () => {
   assert.deepEqual(buildOpeningVisualPlan({ introEndUs: 2_000_000 }), {
     mode: "cover",
     video: null,
-    coverFill: { startUs: 0, endUs: 2_000_000 },
+    coverFill: { start: 0, end: 2_000_000 },
     flashSegments: [],
   });
 });
