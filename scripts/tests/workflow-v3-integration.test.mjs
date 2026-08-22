@@ -98,7 +98,8 @@ test("prepare and draft support a schema v3 project with optional opening assets
 
     assert.equal(result.status, 0, [result.stdout, result.stderr].filter(Boolean).join("\n"));
 
-    const workflow = JSON.parse(fs.readFileSync(path.join(episodeDir, "workflow.json"), "utf8"));
+    const workflowPath = path.join(episodeDir, "workflow.json");
+    const workflow = JSON.parse(fs.readFileSync(workflowPath, "utf8"));
     assert.equal(workflow.schemaVersion, 3);
     assert.deepEqual({
       introVoice: workflow.inputs.introVoice,
@@ -140,6 +141,17 @@ test("prepare and draft support a schema v3 project with optional opening assets
       fs.writeFileSync(imagePath, `placeholder-${index}`);
     }
 
+    const removedOptionalMaterials = {
+      bgm: path.join(tempDir, "removed-bgm.mp3"),
+      introVideo: path.join(tempDir, "removed-intro.mov"),
+      mechanicalSfx: path.join(tempDir, "removed-mechanical.mp3"),
+      waterDropSfx: path.join(tempDir, "removed-water-drop.mp3"),
+      textStartSfx: path.join(tempDir, "removed-text-start.mp3"),
+      flashDir: path.join(tempDir, "removed-flash-directory"),
+    };
+    workflow.fixedMaterials = { ...workflow.fixedMaterials, ...removedOptionalMaterials };
+    fs.writeFileSync(workflowPath, `${JSON.stringify(workflow, null, 2)}\n`);
+
     const draftResult = spawnSync(process.execPath, [
       "scripts/create-jianying-draft.mjs",
       "--project", projectName,
@@ -173,6 +185,29 @@ test("prepare and draft support a schema v3 project with optional opening assets
       "V3 缩小书籍封面",
     ]);
     assert.equal(draftPlan.timeline.bodyStartUs, workflow.timeline.bodyStartUs);
+    for (const removedPath of Object.values(removedOptionalMaterials)) {
+      assert.equal(draftPlan.sourceFiles.includes(removedPath), false);
+    }
+
+    const badBgm = path.join(tempDir, "bad-bgm.mp3");
+    fs.writeFileSync(badBgm, "not valid audio");
+    workflow.fixedMaterials.bgm = badBgm;
+    fs.writeFileSync(workflowPath, `${JSON.stringify(workflow, null, 2)}\n`);
+    const badAudioResult = spawnSync(process.execPath, [
+      "scripts/create-jianying-draft.mjs",
+      "--project", projectName,
+      "--config", configPath,
+      "--dry-run",
+    ], {
+      cwd: ROOT,
+      encoding: "utf8",
+      shell: false,
+    });
+    assert.notEqual(badAudioResult.status, 0);
+    assert.match(
+      [badAudioResult.stdout, badAudioResult.stderr].filter(Boolean).join("\n"),
+      new RegExp(`无法读取素材时长|${path.basename(badBgm)}`, "u"),
+    );
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
     fs.rmSync(episodeDir, { recursive: true, force: true });

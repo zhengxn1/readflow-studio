@@ -72,7 +72,27 @@ const shiftedEnglishPath = resolveEpisodeAsset(workflow.generated.shiftedEnglish
 const shiftedEnglishCues = shiftedEnglishPath && fs.existsSync(shiftedEnglishPath)
   ? readJson(shiftedEnglishPath)
   : [];
-const fixedMaterials = workflow.fixedMaterials || {};
+const configuredFixedMaterials = workflow.fixedMaterials || {};
+const keepAvailableOptionalFile = (filePath) => {
+  if (typeof filePath !== "string" || !filePath.trim()) return "";
+  try {
+    if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) return filePath;
+  } catch {
+    // Missing and inaccessible optional files follow the same skip path.
+  }
+  console.warn(`可选素材已不存在或不是文件，已跳过：${filePath}`);
+  return "";
+};
+const fixedMaterials = isV3
+  ? {
+      ...configuredFixedMaterials,
+      bgm: keepAvailableOptionalFile(configuredFixedMaterials.bgm),
+      introVideo: keepAvailableOptionalFile(configuredFixedMaterials.introVideo),
+      mechanicalSfx: keepAvailableOptionalFile(configuredFixedMaterials.mechanicalSfx),
+      waterDropSfx: keepAvailableOptionalFile(configuredFixedMaterials.waterDropSfx),
+      textStartSfx: keepAvailableOptionalFile(configuredFixedMaterials.textStartSfx),
+    }
+  : configuredFixedMaterials;
 const bodyVoicePath = resolveEpisodeAsset(workflow.inputs.voice || workflow.inputs.bodyVoice);
 const introVoicePath = isV3
   ? resolveEpisodeAsset(workflow.inputs.introVoice)
