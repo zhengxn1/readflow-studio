@@ -58,15 +58,16 @@ export function buildV3DraftPlan({
   const bodyVoice = inputs.bodyVoice ?? inputs.voice;
   const covers = normalizeCoverFiles(coverFiles);
   const flashFiles = (openingPlan?.flashSegments || []).map((segment) => segment?.filePath);
+  const selectedOpeningVideo = openingPlan?.mode === "video" ? openingPlan?.video?.filePath : undefined;
+  const selectedFlashFiles = openingPlan?.mode === "flash" ? flashFiles : [];
   const hasOpeningVideo = Boolean(openingPlan?.video?.filePath);
   const hasFlashImages = flashFiles.some((filePath) => typeof filePath === "string" && filePath.trim());
 
   const videoLabels = [];
   if (openingPlan?.mode === "video" && hasOpeningVideo) videoLabels.push("片头 MOV");
   if (openingPlan?.mode === "flash" && hasFlashImages) videoLabels.push("快闪素材");
-  if (typeof covers.full === "string" && covers.full.trim()) videoLabels.push("全画幅书籍封面");
-  if (!introOnly && compactPaths(sceneFiles).length) videoLabels.push("正文分镜图片");
-  if (!introOnly && typeof covers.cover === "string" && covers.cover.trim()) videoLabels.push("缩小书籍封面");
+  videoLabels.push("全画幅书籍封面");
+  if (!introOnly) videoLabels.push("正文分镜图片", "缩小书籍封面");
 
   const textLabels = ["书名"];
   if (!introOnly) {
@@ -79,10 +80,9 @@ export function buildV3DraftPlan({
   }
 
   const audioLabels = [];
-  if (!introOnly && bodyVoice) audioLabels.push("正文旁白");
+  if (!introOnly) audioLabels.push("正文旁白");
   if (fixedMaterials.bgm) audioLabels.push("背景音乐");
-  if (inputs.introVoice) audioLabels.push("片头话术");
-  if (inputs.titleVoice) audioLabels.push("书名配音");
+  audioLabels.push("片头话术", "书名配音");
   if (fixedMaterials.mechanicalSfx) audioLabels.push("机械音效");
   if (fixedMaterials.waterDropSfx) audioLabels.push("水滴音效");
   if (!introOnly && fixedMaterials.textStartSfx) audioLabels.push("正文开头音效");
@@ -98,8 +98,8 @@ export function buildV3DraftPlan({
       audio: numberedTracks("A", audioLabels),
     },
     sourceFiles: compactPaths([
-      openingPlan?.video?.filePath,
-      ...flashFiles,
+      selectedOpeningVideo,
+      ...selectedFlashFiles,
       covers.full,
       ...(!introOnly ? [covers.cover] : []),
       ...(!introOnly ? sceneFiles : []),

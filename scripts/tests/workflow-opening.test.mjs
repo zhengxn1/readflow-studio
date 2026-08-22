@@ -136,9 +136,73 @@ test("片头视频和封面回退只生成各自实际使用的开场画面轨",
   assert.equal(videoPlan.sourceFiles.includes("intro.mov"), true);
   assert.deepEqual(coverPlan.tracks.video, [
     "V1 全画幅书籍封面",
-    "V2 缩小书籍封面",
+    "V2 正文分镜图片",
+    "V3 缩小书籍封面",
   ]);
   assert.equal(coverPlan.tracks.video.some((name) => /快闪|MOV/u.test(name)), false);
+});
+
+test("封面回退不收集残留的片头视频和快闪源文件", () => {
+  const plan = buildV3DraftPlan({
+    workflow: createV3Workflow(),
+    openingPlan: {
+      mode: "cover",
+      video: { filePath: "unused-intro.mov", start: 0, end: 1_000_000 },
+      coverFill: { start: 0, end: 2_000_000 },
+      flashSegments: [{ filePath: "unused-flash.png", start: 0, end: 2_000_000 }],
+    },
+    sceneFiles: [],
+    coverFiles: { full: "full-cover.png", cover: "cover.png" },
+  });
+
+  assert.equal(plan.sourceFiles.includes("unused-intro.mov"), false);
+  assert.equal(plan.sourceFiles.includes("unused-flash.png"), false);
+});
+
+test("快闪模式不收集残留的片头视频源文件", () => {
+  const plan = buildV3DraftPlan({
+    workflow: createV3Workflow(),
+    openingPlan: {
+      mode: "flash",
+      video: { filePath: "unused-intro.mov", start: 0, end: 2_000_000 },
+      coverFill: null,
+      flashSegments: [{ filePath: "flash.png", start: 0, end: 2_000_000 }],
+    },
+    sceneFiles: [],
+    coverFiles: { full: "full-cover.png", cover: "cover.png" },
+  });
+
+  assert.equal(plan.sourceFiles.includes("flash.png"), true);
+  assert.equal(plan.sourceFiles.includes("unused-intro.mov"), false);
+});
+
+test("必需编辑轨不因源路径暂缺而从草稿计划消失", () => {
+  const workflow = createV3Workflow();
+  workflow.inputs = { introVoice: "", titleVoice: "", bodyVoice: "" };
+  const plan = buildV3DraftPlan({
+    workflow,
+    openingPlan: {
+      mode: "cover",
+      video: null,
+      coverFill: { start: 0, end: 2_000_000 },
+      flashSegments: [],
+    },
+    sceneFiles: [],
+    coverFiles: { full: "", cover: "" },
+    introOnly: false,
+  });
+
+  assert.deepEqual(plan.tracks.video, [
+    "V1 全画幅书籍封面",
+    "V2 正文分镜图片",
+    "V3 缩小书籍封面",
+  ]);
+  assert.deepEqual(plan.tracks.audio, [
+    "A1 正文旁白",
+    "A2 片头话术",
+    "A3 书名配音",
+  ]);
+  assert.deepEqual(plan.sourceFiles, []);
 });
 
 test("intro-only 草稿排除正文素材并保留实际开头音画", () => {
