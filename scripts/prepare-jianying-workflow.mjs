@@ -7,15 +7,21 @@ import { findObsidianBook, downloadBookCover } from "./lib/obsidian-books.mjs";
 import { parseSrt, shiftCues, formatUs, alignTranslatedCues } from "./lib/srt.mjs";
 import { buildStoryboard, storyboardMarkdown } from "./lib/storyboard.mjs";
 import { applyVisualDirections, visualDirectionRules } from "./lib/visual-direction.mjs";
-import { loadWorkflowConfig, loadLayout, parseCliArgs, resolveMaterialPath, slugifyTitle } from "./lib/workflow-config.mjs";
+import { loadWorkflowConfig, loadLayout, parseCliArgs, slugifyTitle } from "./lib/workflow-config.mjs";
+import {
+  buildV3Timeline,
+  collectFlashImages,
+  resolveOptionalMaterial,
+  validateBodyCues,
+} from "./lib/opening-workflow.mjs";
 
 const ROOT = process.cwd();
 const args = parseCliArgs(process.argv.slice(2));
 
-if (!args.book || !args.voice || !args.srt) {
+if (!args.book || !args["intro-voice"] || !args["title-voice"] || !args.voice || !args.srt) {
   console.error([
     "用法：",
-    "node scripts/prepare-jianying-workflow.mjs --book \"书名\" --voice \"正文.mp3\" --srt \"中文字幕.srt\" [--srt-en \"英文字幕.srt\" | --no-english] [--cover \"本地路径或网址\"] [--aspect 3:4] [--project \"项目名\"]",
+    "node scripts/prepare-jianying-workflow.mjs --book \"书名\" --intro-voice \"片头话术.mp3\" --title-voice \"书名配音.mp3\" --voice \"正文.mp3\" --srt \"正文中文字幕.srt\" [--srt-en \"英文字幕.srt\" | --no-english] [--cover \"本地路径或网址\"] [--aspect 3:4] [--project \"项目名\"]",
   ].join("\n"));
   process.exit(1);
 }
@@ -39,6 +45,10 @@ function copyInput(source, destination) {
   return absoluteSource;
 }
 
+function relativeManifestPath(from, to) {
+  return path.relative(from, to).split(path.sep).join("/");
+}
+
 function createFullCanvasCover(source, destination, canvas) {
   const filter = [
     `[0:v]split=2[background][foreground]`,
@@ -54,25 +64,33 @@ function createFullCanvasCover(source, destination, canvas) {
 }
 
 function markdownManifest(manifest) {
+  const materialLabel = (filePath) => filePath ? path.basename(filePath) : "未启用";
   return [
     "# 素材清单",
     "",
     `- 项目画幅：${manifest.aspect}（${manifest.canvas.width}×${manifest.canvas.height}）`,
     `- 书籍：${manifest.book.title}`,
     `- 作者：${manifest.book.author || "未填写"}`,
-    `- Obsidian 笔记：${manifest.book.notePath}`,
+    `- Obsidian 笔记：${manifest.book.notePath || "未使用"}`,
     `- 书籍封面：input/${path.basename(manifest.inputs.cover)}`,
     `- 全画幅封面：input/${path.basename(manifest.inputs.fullCover)}（保持原封面比例，背景适配画布）`,
-    `- 正文音频：input/${path.basename(manifest.inputs.voice)}`,
+    `- 片头话术配音：${manifest.inputs.introVoice}`,
+    `- 书名配音：${manifest.inputs.titleVoice}`,
+    `- 正文配音：${manifest.inputs.voice}`,
     `- 中文字幕：input/${path.basename(manifest.inputs.srt)}`,
     `- 英文字幕：${manifest.inputs.englishSrt ? `input/${path.basename(manifest.inputs.englishSrt)}` : "未提供"}`,
-    `- 水滴音效：${path.basename(manifest.fixedMaterials.waterDropSfx)}`,
-    `- 正文开头音效：${path.basename(manifest.fixedMaterials.textStartSfx)}`,
-    `- 片头时长：${(manifest.intro.durationUs / 1_000_000).toFixed(3)} 秒`,
+    `- 背景音乐：${materialLabel(manifest.fixedMaterials.bgm)}`,
+    `- 片头 MOV：${materialLabel(manifest.fixedMaterials.introVideo)}`,
+    `- 机械音效：${materialLabel(manifest.fixedMaterials.mechanicalSfx)}`,
+    `- 水滴音效：${materialLabel(manifest.fixedMaterials.waterDropSfx)}`,
+    `- 正文开头音效：${materialLabel(manifest.fixedMaterials.textStartSfx)}`,
+    `- 快闪图片目录：${materialLabel(manifest.fixedMaterials.flashDir)}`,
+    `- 片头话术时长：${(manifest.opening.introVoiceDurationUs / 1_000_000).toFixed(3)} 秒`,
+    `- 书名配音时长：${(manifest.opening.titleVoiceDurationUs / 1_000_000).toFixed(3)} 秒`,
     `- 正文音频时长：${(manifest.body.durationUs / 1_000_000).toFixed(3)} 秒`,
     `- 成片预计时长：${(manifest.totalDurationUs / 1_000_000).toFixed(3)} 秒`,
-    `- 字幕时间：SRT 原始时间 + ${manifest.intro.captionOffsetUs} 微秒（从书封面出现时开始）`,
-    `- 片头字幕：不显示“${manifest.intro.text}”字幕`,
+    `- 正文开始偏移：${manifest.timeline.bodyStartUs} 微秒`,
+    `- 正文字幕偏移：SRT 原始时间 + ${manifest.timeline.bodyStartUs} 微秒`,
     "- 画面规则：所有图片保持宽高比；正文一分镜一张图，不按每句字幕换图。",
     "",
   ].join("\n");
@@ -81,12 +99,16 @@ function markdownManifest(manifest) {
 const { config, configPath } = loadWorkflowConfig(ROOT, args.config);
 const aspect = args.aspect || config.defaults?.aspect || "3:4";
 const layout = loadLayout(ROOT, aspect);
+const introVoiceSource = path.resolve(args["intro-voice"]);
+const titleVoiceSource = path.resolve(args["title-voice"]);
 const voiceSource = path.resolve(args.voice);
 const srtSource = path.resolve(args.srt);
 const englishSrtSource = args["srt-en"] ? path.resolve(args["srt-en"]) : "";
 const requireEnglishSubtitles = args.english === false
   ? false
   : config.defaults?.requireEnglishSubtitles !== false;
+if (!fs.existsSync(introVoiceSource)) throw new Error(`找不到片头话术音频：${introVoiceSource}`);
+if (!fs.existsSync(titleVoiceSource)) throw new Error(`找不到书名配音：${titleVoiceSource}`);
 if (!fs.existsSync(voiceSource)) throw new Error(`找不到正文音频：${voiceSource}`);
 if (!fs.existsSync(srtSource)) throw new Error(`找不到字幕文件：${srtSource}`);
 if (englishSrtSource && !fs.existsSync(englishSrtSource)) throw new Error(`找不到英文字幕文件：${englishSrtSource}`);
@@ -117,11 +139,15 @@ fs.mkdirSync(inputDir, { recursive: true });
 fs.mkdirSync(imagesDir, { recursive: true });
 fs.mkdirSync(generatedDir, { recursive: true });
 
+const introVoicePath = path.join(inputDir, "intro-voice.mp3");
+const titleVoicePath = path.join(inputDir, "title-voice.mp3");
 const voicePath = path.join(inputDir, "body-voiceover.mp3");
 const srtPath = path.join(inputDir, "body-subtitles.srt");
 const englishSrtPath = englishSrtSource ? path.join(inputDir, "body-subtitles-en.srt") : "";
 const coverPath = path.join(inputDir, "book-cover.jpg");
 const fullCoverPath = path.join(inputDir, `book-cover-full-${aspect.replace(":", "x")}.jpg`);
+copyInput(introVoiceSource, introVoicePath);
+copyInput(titleVoiceSource, titleVoicePath);
 copyInput(voiceSource, voicePath);
 copyInput(srtSource, srtPath);
 if (englishSrtSource) copyInput(englishSrtSource, englishSrtPath);
@@ -134,46 +160,43 @@ if (args.cover) {
 createFullCanvasCover(coverPath, fullCoverPath, layout.canvas);
 
 const fixedMaterials = {
-  bgm: resolveMaterialPath(config, "bgm"),
-  introVideo: resolveMaterialPath(config, "introVideo"),
-  introVoice: resolveMaterialPath(config, "introVoice"),
-  mechanicalSfx: resolveMaterialPath(config, "mechanicalSfx"),
-  waterDropSfx: resolveMaterialPath(config, "waterDropSfx"),
-  textStartSfx: resolveMaterialPath(config, "textStartSfx"),
-  flashDir: resolveMaterialPath(config, "flashDir"),
+  bgm: resolveOptionalMaterial(config, "bgm"),
+  introVideo: resolveOptionalMaterial(config, "introVideo"),
+  mechanicalSfx: resolveOptionalMaterial(config, "mechanicalSfx"),
+  waterDropSfx: resolveOptionalMaterial(config, "waterDropSfx"),
+  textStartSfx: resolveOptionalMaterial(config, "textStartSfx"),
+  flashDir: resolveOptionalMaterial(config, "flashDir", { kind: "directory" }),
 };
-const introVideoDurationUs = probeDurationUs(fixedMaterials.introVideo);
-const flashDurationUs = Number(config.defaults?.flashDurationUs ?? config.defaults?.flashEndUs ?? 1_080_000);
-const coverHoldDurationUs = Number(config.defaults?.coverHoldDurationUs ?? 1_300_000);
-const flashStartUs = introVideoDurationUs;
-const flashEndUs = flashStartUs + flashDurationUs;
-const coverStartUs = flashEndUs;
-const introDurationUs = coverStartUs + coverHoldDurationUs;
+const flashImages = collectFlashImages(fixedMaterials.flashDir);
+const introVideoDurationUs = fixedMaterials.introVideo && flashImages.length === 0
+  ? probeDurationUs(fixedMaterials.introVideo)
+  : 0;
 const cues = parseSrt(fs.readFileSync(srtPath, "utf8"));
+validateBodyCues(cues, args.book);
 const englishCues = englishSrtPath ? parseSrt(fs.readFileSync(englishSrtPath, "utf8")) : [];
 const alignedEnglishCues = englishCues.length ? alignTranslatedCues(cues, englishCues) : [];
-const captionOffsetUs = coverStartUs;
-const shiftedCues = shiftCues(cues, captionOffsetUs);
-const shiftedEnglishCues = shiftCues(alignedEnglishCues, captionOffsetUs);
-const normalizedBookTitle = String(args.book).replace(/[《》\s]/g, "");
-const firstCueIsBookTitle = String(cues[0]?.text || "").replace(/[《》\s]/g, "") === normalizedBookTitle;
-if (!firstCueIsBookTitle) {
-  throw new Error(`中文字幕第一条必须是书名《${args.book}》，以便全画幅封面、书名朗读和正文切换准确同步。`);
-}
-const storyboardCues = firstCueIsBookTitle ? cues.slice(1) : cues;
+const introVoiceDurationUs = probeDurationUs(introVoicePath);
+const titleVoiceDurationUs = probeDurationUs(titleVoicePath);
+const voiceDurationUs = probeDurationUs(voicePath);
+const bodyDurationUs = Math.max(voiceDurationUs, cues.at(-1).endUs);
+const timeline = buildV3Timeline({
+  introVoiceDurationUs,
+  titleVoiceDurationUs,
+  bodyDurationUs,
+});
+const shiftedCues = shiftCues(cues, timeline.bodyStartUs);
+const shiftedEnglishCues = shiftCues(alignedEnglishCues, timeline.bodyStartUs);
 const cueCounts = args["scene-cue-counts"]
   ? String(args["scene-cue-counts"]).split(",").map((value) => Number(value.trim()))
   : null;
-const scenes = applyVisualDirections(buildStoryboard(storyboardCues, captionOffsetUs, { cueCounts }), projectName).map((scene) => ({
+const scenes = applyVisualDirections(buildStoryboard(cues, timeline.bodyStartUs, { cueCounts }), projectName).map((scene) => ({
   ...scene,
   materialStatus: fs.existsSync(path.join(imagesDir, scene.imageFile)) ? "confirmed" : "generate",
 }));
-const voiceDurationUs = probeDurationUs(voicePath);
-const bodyDurationUs = Math.max(voiceDurationUs, cues.at(-1).endUs);
-const totalDurationUs = captionOffsetUs + bodyDurationUs;
+const totalDurationUs = timeline.totalDurationUs;
 
 const manifest = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   createdAt: new Date().toISOString(),
   configPath: path.relative(ROOT, configPath),
   projectName,
@@ -189,25 +212,23 @@ const manifest = {
     notePath: book.filePath,
     sourceCoverUrl: /^https?:\/\//iu.test(String(args.cover || book.cover)) ? String(args.cover || book.cover) : "",
   },
-  intro: {
-    text: args.intro || config.defaults?.introText || "今天我们要分享的是",
-    durationUs: introDurationUs,
-    videoDurationUs: introVideoDurationUs,
-    flashStartUs,
-    flashEndUs,
-    coverStartUs,
-    coverHoldDurationUs,
-    captionOffsetUs,
-    firstCueIsBookTitle,
+  timeline,
+  opening: {
+    introVoiceDurationUs,
+    titleVoiceDurationUs,
+    introVideoDurationUs,
+    flashImageCount: flashImages.length,
   },
   body: { durationUs: bodyDurationUs, srtCueCount: cues.length, englishSrtCueCount: englishCues.length, sceneCount: scenes.length },
   totalDurationUs,
   inputs: {
-    voice: path.relative(episodeDir, voicePath),
-    srt: path.relative(episodeDir, srtPath),
-    englishSrt: englishSrtPath ? path.relative(episodeDir, englishSrtPath) : "",
-    cover: path.relative(episodeDir, coverPath),
-    fullCover: path.relative(episodeDir, fullCoverPath),
+    introVoice: relativeManifestPath(episodeDir, introVoicePath),
+    titleVoice: relativeManifestPath(episodeDir, titleVoicePath),
+    voice: relativeManifestPath(episodeDir, voicePath),
+    srt: relativeManifestPath(episodeDir, srtPath),
+    englishSrt: englishSrtPath ? relativeManifestPath(episodeDir, englishSrtPath) : "",
+    cover: relativeManifestPath(episodeDir, coverPath),
+    fullCover: relativeManifestPath(episodeDir, fullCoverPath),
   },
   fixedMaterials,
   generated: {
@@ -239,17 +260,23 @@ fs.writeFileSync(path.join(episodeDir, manifest.generated.imagePrompts), `${JSON
     id, text, visualStyle, imagePrompt, imageFile, materialStatus,
   })),
 }, null, 2)}\n`);
+const editPlanSubtitleLine = manifest.inputs.englishSrt
+  ? "7. 中文和英文使用独立字幕轨，英文沿用中文时间并放在中文下方。"
+  : "7. 本期未启用英文字幕，仅保留中文字幕轨。";
+const reviewSubtitleLine = manifest.inputs.englishSrt
+  ? "- [ ] 中英文字幕条数与时间一致，英文位于中文下方且间距清晰"
+  : "- [ ] 本期未启用英文字幕，仅检查中文字幕与正文配音的时间一致";
 fs.writeFileSync(path.join(episodeDir, "storyboard.md"), storyboardMarkdown(scenes));
 fs.writeFileSync(path.join(episodeDir, "source-manifest.md"), markdownManifest(manifest));
 fs.writeFileSync(path.join(episodeDir, "edit-plan.md"), [
   "# 剪辑计划", "",
-  "1. 片头 MOV 与片头语音同步，不显示片头字幕，也不播放机械音效。",
-  "2. MOV 结束后快闪素材与机械音效同步。",
-  "3. 快闪结束后全画幅封面以水滴遮罩进入，播放完整水滴音效；正文 MP3 与书名字幕从此处开始。",
-  "4. 书名朗读结束后的第一句正文开始时切换第一张分镜图，小封面点开并同步正文开头音效。",
-  "5. 书名和作者从书名朗读结束后持续到视频结束。",
+  "1. 快闪图片、片头 MOV 或全画幅书封承接片头话术；有快闪时优先使用快闪，其次使用片头 MOV，否则以全画幅书封兜底。",
+  "2. 片头话术结束时显示全画幅书封，同时开始书名配音和自动生成的书名字幕。",
+  "3. 书名配音结束后紧接正文配音、第一条正文字幕和第一张分镜图；小封面按模板进入。",
+  "4. BGM、机械音效、水滴音效和正文开头音效仅在对应素材存在时添加。",
+  "5. 书名和作者从书名配音结束后持续到视频结束。",
   "6. 每个分镜覆盖 5～10 条正文字幕，一分镜一张图。",
-  "7. 中文和英文使用独立字幕轨，英文沿用中文时间并放在中文下方。",
+  editPlanSubtitleLine,
   "8. 草稿安装时复制素材到草稿 assets 并重写路径，保留全部轨道可编辑。", "",
 ].join("\n"));
 fs.writeFileSync(path.join(episodeDir, "review-notes.md"), [
@@ -257,11 +284,11 @@ fs.writeFileSync(path.join(episodeDir, "review-notes.md"), [
   "- [ ] 确认原始封面和目标画幅封面版本",
   "- [ ] 确认分镜均覆盖 5～10 条字幕",
   "- [ ] 所有 scene-*.png 已生成，且无人像近景、文字卡片和画面拉伸",
-  "- [ ] 片头 MOV 无字幕，且没有机械音效",
-  "- [ ] 快闪与机械音效同步",
-  "- [ ] 书名封面、水滴遮罩、水滴音效、正文人声和书名字幕同步",
-  "- [ ] 第一正文句、小封面点开和正文开头音效同步",
-  "- [ ] 中英文字幕条数与时间一致，英文位于中文下方且间距清晰",
+  "- [ ] 检查片头话术 → 书名配音 → 正文配音的三段音频边界连续且无重叠",
+  "- [ ] 检查实际启用的开场素材按快闪图片、片头 MOV、全画幅书封的优先级正确承接片头话术",
+  "- [ ] 检查实际启用的可选音效位于对应事件点；未启用的音效不应产生空轨或占位",
+  "- [ ] 正文 SRT 从 00:00:00 开始，第一条是第一句正文，并从正文配音起点统一偏移",
+  reviewSubtitleLine,
   "- [ ] 书名和作者从书名结束持续到视频结束，且与正文字幕不拥挤",
   "- [ ] 确认字幕未早于声音，并检查开头、中段、结尾",
   "- [ ] 确认字体在本机剪映可用",
@@ -285,6 +312,6 @@ console.log(JSON.stringify({
   cover: coverPath,
   captions: cues.length,
   scenes: scenes.length,
-  introOffset: formatUs(captionOffsetUs),
+  bodyOffset: formatUs(timeline.bodyStartUs),
   next: `确认分镜并补齐 images/scene-*.png 后，运行 npm run workflow:draft -- --project \"${projectName}\"`,
 }, null, 2));

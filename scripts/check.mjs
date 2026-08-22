@@ -13,8 +13,10 @@ const scriptFiles = [
   "scripts/setup-capcut-mate.mjs",
   "scripts/start-capcut-mate.mjs",
   "scripts/lib/capcut-mate-client.mjs",
+  "scripts/lib/draft-plan.mjs",
   "scripts/lib/media-server.mjs",
   "scripts/lib/obsidian-books.mjs",
+  "scripts/lib/opening-workflow.mjs",
   "scripts/lib/srt.mjs",
   "scripts/lib/storyboard.mjs",
   "scripts/lib/visual-direction.mjs",
@@ -35,7 +37,7 @@ for (const file of scriptFiles) {
 }
 
 const config = JSON.parse(fs.readFileSync(path.join(ROOT, "config", "workflow.example.json"), "utf8"));
-for (const key of ["bgm", "introVideo", "introVoice", "mechanicalSfx", "waterDropSfx", "textStartSfx", "flashDir"]) {
+for (const key of ["bgm", "introVideo", "mechanicalSfx", "waterDropSfx", "textStartSfx", "flashDir"]) {
   if (!config.materials?.[key]) throw new Error(`示例配置缺少 materials.${key}`);
 }
 const layouts = JSON.parse(fs.readFileSync(path.join(ROOT, "templates", "jianying-draft", "layouts.json"), "utf8"));
