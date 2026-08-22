@@ -109,9 +109,6 @@ export function buildOpeningVisualPlan({
   introVideoDurationUs,
 }) {
   requirePositiveDuration(introEndUs, "片头语音");
-  if (introVideoDurationUs !== undefined) {
-    requirePositiveDuration(introVideoDurationUs, "片头视频");
-  }
 
   if (flashImages.length > 0) {
     const segmentDurationUs = introEndUs / flashImages.length;
@@ -139,7 +136,7 @@ export function buildOpeningVisualPlan({
   }
 
   return {
-    mode: "coverFill",
+    mode: "cover",
     video: null,
     coverFill: { startUs: 0, endUs: introEndUs },
     flashSegments: [],

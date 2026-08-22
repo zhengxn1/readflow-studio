@@ -87,6 +87,15 @@ test("快闪图片优先于 MOV 并按顺序平均铺满片头", () => {
   });
 });
 
+test("选择快闪时忽略无效的 MOV 时长", () => {
+  assert.equal(buildOpeningVisualPlan({
+    introEndUs: 2_000_000,
+    flashImages: ["1.jpg"],
+    introVideo: "intro.mov",
+    introVideoDurationUs: 0,
+  }).mode, "flash");
+});
+
 test("MOV 比片头长时从零播放并截断", () => {
   assert.deepEqual(buildOpeningVisualPlan({
     introEndUs: 2_000_000,
@@ -115,11 +124,20 @@ test("MOV 比片头短时余下时段由封面补齐", () => {
 
 test("没有快闪和 MOV 时封面铺满整个片头", () => {
   assert.deepEqual(buildOpeningVisualPlan({ introEndUs: 2_000_000 }), {
-    mode: "coverFill",
+    mode: "cover",
     video: null,
     coverFill: { startUs: 0, endUs: 2_000_000 },
     flashSegments: [],
   });
+});
+
+test("选择封面回退时忽略无效的 MOV 时长", () => {
+  assert.equal(buildOpeningVisualPlan({
+    introEndUs: 2_000_000,
+    flashImages: [],
+    introVideo: "",
+    introVideoDurationUs: Number.NaN,
+  }).mode, "cover");
 });
 
 test("开场画面素材时长必须有限且大于零", () => {
@@ -179,6 +197,16 @@ test("可选素材必须匹配指定的文件或目录类型", (t) => {
 
 test("快闪目录为空配置时返回空数组", () => {
   assert.deepEqual(collectFlashImages(""), []);
+});
+
+test("不存在的绝对快闪目录返回空数组且不抛错", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "readflow-flash-missing-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const missingDir = path.join(root, "不存在的快闪目录");
+
+  assert.doesNotThrow(() => {
+    assert.deepEqual(collectFlashImages(missingDir), []);
+  });
 });
 
 test("快闪图片只收支持格式并按中文数字语义排序", (t) => {
