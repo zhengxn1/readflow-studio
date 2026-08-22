@@ -33,14 +33,14 @@
 
 运行：
 
-```bash
-npm run workflow:prepare -- \
-  --book "书名" \
-  --intro-voice "/绝对路径/片头话术.mp3" \
-  --title-voice "/绝对路径/书名配音.mp3" \
-  --voice "/绝对路径/正文.mp3" \
-  --srt "/绝对路径/中文字幕.srt" \
-  --srt-en "/绝对路径/英文字幕.srt" \
+```powershell
+npm run workflow:prepare -- `
+  --book "书名" `
+  --intro-voice "C:\素材\片头话术.mp3" `
+  --title-voice "C:\素材\书名配音.mp3" `
+  --voice "C:\素材\正文.mp3" `
+  --srt "C:\素材\中文字幕.srt" `
+  --srt-en "C:\素材\英文字幕.srt" `
   --aspect "3:4"
 ```
 
@@ -56,7 +56,7 @@ npm run workflow:prepare -- \
 
 1. 从 Obsidian 获取原始封面，并生成保持原封面比例的目标画幅适配版本。
 2. 检查正文 SRT 是否从 `00:00:00` 和第一句正文开始，拒绝把书名混入正文字幕。
-3. 将片头话术、书名、正文三段 MP3，以及正文中英文 SRT 和封面固定为当期输入。
+3. 将片头话术、书名、正文三段 MP3，以及正文中文 SRT、按需提供的英文 SRT 和封面固定为当期输入。
 4. 按三段音频实际时长计算书名和正文开始点，并将正文字幕统一偏移到正文配音起点。
 5. 生成 `workflow.json`、`source-manifest.md`、`segments.json`、`storyboard.json`、`storyboard.md`、`image-prompts.json`、`edit-plan.md` 和 `review-notes.md`。
 6. 当期清单使用相对路径，项目改名或移动后仍可读取。
@@ -79,11 +79,13 @@ npm run workflow:prepare -- \
 | 片头话术 | 优先快闪图片，其次片头 MOV，否则全画幅书封兜底 | 片头话术配音 | 不显示片头话术字幕 |
 | 书名揭示 | 全画幅书封 | 书名配音 | 自动生成的书名字幕 |
 | 正文第一句 | 第一张分镜图；小封面按模板进入 | 正文配音 | 第一条正文字幕；书名、作者开始常驻 |
-| 后续正文 | 每镜一张图，慢推近 | 正文配音；BGM 存在时加入 | 中英文逐条字幕 |
+| 后续正文 | 每镜一张图，慢推近 | 正文配音；BGM 存在时加入 | 中文字幕；启用英文时再加逐条英文字幕 |
 
 片头话术从 `0` 开始，书名配音在片头话术结束后开始，正文紧接书名配音结束点。书名和作者从书名配音结束后持续到视频结束。
 
-BGM、片头 MOV、快闪图片、机械音效、水滴音效和正文开头音效均为可选素材：存在即用，缺失跳过；路径存在但文件损坏时停止并报错。片头话术不属于 `materials` 固定素材，每期必须通过 `--intro-voice` 提供。
+开场画面只选择一条路径：快闪图片优先，其次是片头 MOV，两者都不可用时由全画幅书封兜底。只有实际选中的开场素材进入草稿；选中素材存在但损坏时停止并报错。
+
+BGM、机械音效、水滴音效和正文开头音效是可叠加的可选音频：存在时启用，缺失时跳过，存在但损坏时停止并报错。片头话术不属于 `materials` 固定素材，每期必须通过 `--intro-voice` 提供。
 
 ## 7. 画幅与排版
 
@@ -99,17 +101,17 @@ BGM、片头 MOV、快闪图片、机械音效、水滴音效和正文开头音�
 
 图片齐全后先干跑：
 
-```bash
+```powershell
 npm run workflow:draft -- --project "项目名" --dry-run
 ```
 
 正式安装：
 
-```bash
-npm run workflow:draft -- \
-  --project "项目名" \
-  --install-to-jianying \
-  --jianying-dir "/剪映草稿库目录" \
+```powershell
+npm run workflow:draft -- `
+  --project "项目名" `
+  --install-to-jianying `
+  --jianying-dir "D:\剪映草稿" `
   --draft-name "草稿名称"
 ```
 
@@ -117,7 +119,7 @@ npm run workflow:draft -- \
 
 - 视频：实际启用的片头 MOV 或快闪、全画幅封面、正文分镜、小封面。
 - 音频：片头话术、书名、正文三段配音，以及实际启用的 BGM、机械音效、水滴音效、正文开头音效。
-- 文字：中文、英文、书名、作者、昵称、来源说明。
+- 文字：中文、按需启用的英文、书名、作者、昵称、来源说明。
 
 安装时将媒体复制到草稿自身 `assets/`，并重写草稿内绝对路径。目标草稿已存在时停止，不覆盖旧草稿。
 
@@ -127,7 +129,7 @@ npm run workflow:draft -- \
 2. 检查草稿画布、总时长和所有源媒体时长。
 3. 检查片头话术、书名、正文三段配音边界连续且无重叠。
 4. 检查实际启用的开场素材和可选音效节点；未启用的素材不应产生空轨或占位。
-5. 检查中英文条数、时间、字号和上下间距。
+5. 检查中文字幕时间与正文配音一致；启用英文字幕时，再检查中英文条数、时间、字号和上下间距。
 6. 检查书名、作者常驻时间和位置。
 7. 检查图片数量与分镜一致、无黑帧、无拉伸。
 8. 检查剪映草稿内所有媒体路径指向草稿自己的 `assets/`。
@@ -147,13 +149,13 @@ episodes/<日期-书名>/
     title-voice.mp3
     body-voiceover.mp3
     body-subtitles.srt
-    body-subtitles-en.srt
+    body-subtitles-en.srt  # 可选
     book-cover.jpg
     book-cover-full-3x4.jpg
   generated/
     segments.json
     shifted-captions.json
-    shifted-captions-en.json
+    shifted-captions-en.json  # 可选
     storyboard.json
     image-prompts.json
   images/

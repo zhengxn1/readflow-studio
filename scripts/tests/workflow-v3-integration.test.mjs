@@ -33,7 +33,9 @@ function createSilentMp3(filePath, durationSeconds) {
 test("prepare and draft support a schema v3 project with optional opening assets", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "readflow-v3-"));
   const projectName = `workflow-v3-${process.pid}-${Date.now()}`;
+  const bilingualProjectName = `${projectName}-bilingual`;
   const episodeDir = path.join(ROOT, "episodes", projectName);
+  const bilingualEpisodeDir = path.join(ROOT, "episodes", bilingualProjectName);
 
   try {
     const introVoice = path.join(tempDir, "intro.mp3");
@@ -41,6 +43,7 @@ test("prepare and draft support a schema v3 project with optional opening assets
     const bodyVoice = path.join(tempDir, "body.mp3");
     const cover = path.join(tempDir, "cover.jpg");
     const bodySrt = path.join(tempDir, "body.srt");
+    const englishSrt = path.join(tempDir, "body-en.srt");
     const configPath = path.join(tempDir, "config.json");
 
     createSilentMp3(introVoice, 2);
@@ -60,6 +63,16 @@ test("prepare and draft support a schema v3 project with optional opening assets
       "2",
       "00:00:01,800 --> 00:00:04,000",
       "第二句正文",
+      "",
+    ].join("\n"));
+    fs.writeFileSync(englishSrt, [
+      "1",
+      "00:00:00,000 --> 00:00:01,800",
+      "First body sentence",
+      "",
+      "2",
+      "00:00:01,800 --> 00:00:04,000",
+      "Second body sentence",
       "",
     ].join("\n"));
     fs.writeFileSync(configPath, `${JSON.stringify({
@@ -137,7 +150,11 @@ test("prepare and draft support a schema v3 project with optional opening assets
     assert.match(sourceManifest, /成片预计时长：\d+\.\d{3} 秒/u);
     assert.match(sourceManifest, /正文开始偏移：\d+ 微秒/u);
     assert.match(sourceManifest, /正文字幕偏移：SRT 原始时间 \+ \d+ 微秒/u);
-    assert.doesNotMatch(sourceManifest, /第一条.*书名|书名.*第一条/u);
+    assert.match(sourceManifest, /Obsidian 笔记：未使用/u);
+    assert.doesNotMatch(
+      sourceManifest,
+      /第一条中文字幕必须与目标书名一致|中文 SRT 第一条为书名|第一条必须是书名/u,
+    );
 
     const editPlan = fs.readFileSync(path.join(episodeDir, "edit-plan.md"), "utf8");
     assert.match(editPlan, /快闪图片、片头 MOV 或全画幅书封/u);
@@ -145,7 +162,8 @@ test("prepare and draft support a schema v3 project with optional opening assets
     assert.match(editPlan, /正文配音、第一条正文字幕和第一张分镜图/u);
     assert.match(editPlan, /BGM、机械音效、水滴音效和正文开头音效仅在对应素材存在时添加/u);
     assert.match(editPlan, /每个分镜覆盖 5～10 条正文字幕，一分镜一张图/u);
-    assert.match(editPlan, /中文和英文使用独立字幕轨/u);
+    assert.match(editPlan, /本期未启用英文字幕，仅保留中文字幕轨/u);
+    assert.doesNotMatch(editPlan, /中文和英文使用独立字幕轨|英文沿用中文时间/u);
     assert.match(editPlan, /复制素材到草稿 assets 并重写路径/u);
 
     const reviewNotes = fs.readFileSync(path.join(episodeDir, "review-notes.md"), "utf8");
@@ -153,12 +171,48 @@ test("prepare and draft support a schema v3 project with optional opening assets
     assert.match(reviewNotes, /实际启用的开场素材/u);
     assert.match(reviewNotes, /实际启用的可选音效/u);
     assert.match(reviewNotes, /正文 SRT.*第一句正文/u);
-    assert.match(reviewNotes, /中英文字幕条数与时间一致/u);
+    assert.match(reviewNotes, /本期未启用英文字幕，仅检查中文字幕/u);
+    assert.doesNotMatch(reviewNotes, /中英文字幕条数与时间一致|英文位于中文下方/u);
     assert.match(reviewNotes, /分镜均覆盖 5～10 条字幕/u);
     assert.match(reviewNotes, /草稿只引用自身 assets/u);
     assert.doesNotMatch(reviewNotes, /片头 MOV 无字幕/u);
     assert.doesNotMatch(reviewNotes, /快闪与机械音效同步/u);
     assert.doesNotMatch(reviewNotes, /水滴遮罩、水滴音效/u);
+
+    const bilingualResult = spawnSync(process.execPath, [
+      "scripts/prepare-jianying-workflow.mjs",
+      "--book", "测试书",
+      "--author", "测试作者",
+      "--cover", cover,
+      "--intro-voice", introVoice,
+      "--title-voice", titleVoice,
+      "--voice", bodyVoice,
+      "--srt", bodySrt,
+      "--srt-en", englishSrt,
+      "--project", bilingualProjectName,
+      "--config", configPath,
+    ], {
+      cwd: ROOT,
+      encoding: "utf8",
+      shell: false,
+    });
+    assert.equal(
+      bilingualResult.status,
+      0,
+      [bilingualResult.stdout, bilingualResult.stderr].filter(Boolean).join("\n"),
+    );
+    const bilingualEditPlan = fs.readFileSync(
+      path.join(bilingualEpisodeDir, "edit-plan.md"),
+      "utf8",
+    );
+    assert.match(bilingualEditPlan, /中文和英文使用独立字幕轨，英文沿用中文时间/u);
+    assert.doesNotMatch(bilingualEditPlan, /本期未启用英文字幕/u);
+    const bilingualReviewNotes = fs.readFileSync(
+      path.join(bilingualEpisodeDir, "review-notes.md"),
+      "utf8",
+    );
+    assert.match(bilingualReviewNotes, /中英文字幕条数与时间一致/u);
+    assert.doesNotMatch(bilingualReviewNotes, /本期未启用英文字幕/u);
 
     const shiftedCaptions = JSON.parse(fs.readFileSync(
       path.join(episodeDir, workflow.generated.shiftedCaptions),
@@ -290,5 +344,6 @@ test("prepare and draft support a schema v3 project with optional opening assets
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
     fs.rmSync(episodeDir, { recursive: true, force: true });
+    fs.rmSync(bilingualEpisodeDir, { recursive: true, force: true });
   }
 });

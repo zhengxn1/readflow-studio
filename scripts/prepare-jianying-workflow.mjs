@@ -71,7 +71,7 @@ function markdownManifest(manifest) {
     `- 项目画幅：${manifest.aspect}（${manifest.canvas.width}×${manifest.canvas.height}）`,
     `- 书籍：${manifest.book.title}`,
     `- 作者：${manifest.book.author || "未填写"}`,
-    `- Obsidian 笔记：${manifest.book.notePath}`,
+    `- Obsidian 笔记：${manifest.book.notePath || "未使用"}`,
     `- 书籍封面：input/${path.basename(manifest.inputs.cover)}`,
     `- 全画幅封面：input/${path.basename(manifest.inputs.fullCover)}（保持原封面比例，背景适配画布）`,
     `- 片头话术配音：${manifest.inputs.introVoice}`,
@@ -258,6 +258,12 @@ fs.writeFileSync(path.join(episodeDir, manifest.generated.imagePrompts), `${JSON
     id, text, visualStyle, imagePrompt, imageFile, materialStatus,
   })),
 }, null, 2)}\n`);
+const editPlanSubtitleLine = manifest.inputs.englishSrt
+  ? "7. 中文和英文使用独立字幕轨，英文沿用中文时间并放在中文下方。"
+  : "7. 本期未启用英文字幕，仅保留中文字幕轨。";
+const reviewSubtitleLine = manifest.inputs.englishSrt
+  ? "- [ ] 中英文字幕条数与时间一致，英文位于中文下方且间距清晰"
+  : "- [ ] 本期未启用英文字幕，仅检查中文字幕与正文配音的时间一致";
 fs.writeFileSync(path.join(episodeDir, "storyboard.md"), storyboardMarkdown(scenes));
 fs.writeFileSync(path.join(episodeDir, "source-manifest.md"), markdownManifest(manifest));
 fs.writeFileSync(path.join(episodeDir, "edit-plan.md"), [
@@ -268,7 +274,7 @@ fs.writeFileSync(path.join(episodeDir, "edit-plan.md"), [
   "4. BGM、机械音效、水滴音效和正文开头音效仅在对应素材存在时添加。",
   "5. 书名和作者从书名配音结束后持续到视频结束。",
   "6. 每个分镜覆盖 5～10 条正文字幕，一分镜一张图。",
-  "7. 中文和英文使用独立字幕轨，英文沿用中文时间并放在中文下方。",
+  editPlanSubtitleLine,
   "8. 草稿安装时复制素材到草稿 assets 并重写路径，保留全部轨道可编辑。", "",
 ].join("\n"));
 fs.writeFileSync(path.join(episodeDir, "review-notes.md"), [
@@ -280,7 +286,7 @@ fs.writeFileSync(path.join(episodeDir, "review-notes.md"), [
   "- [ ] 检查实际启用的开场素材按快闪图片、片头 MOV、全画幅书封的优先级正确承接片头话术",
   "- [ ] 检查实际启用的可选音效位于对应事件点；未启用的音效不应产生空轨或占位",
   "- [ ] 正文 SRT 从 00:00:00 开始，第一条是第一句正文，并从正文配音起点统一偏移",
-  "- [ ] 中英文字幕条数与时间一致，英文位于中文下方且间距清晰",
+  reviewSubtitleLine,
   "- [ ] 书名和作者从书名结束持续到视频结束，且与正文字幕不拥挤",
   "- [ ] 确认字幕未早于声音，并检查开头、中段、结尾",
   "- [ ] 确认字体在本机剪映可用",

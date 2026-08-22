@@ -8,7 +8,7 @@ ReadFlow Studio（读流工作室）是一套从 Obsidian 阅读知识库到可�
 
 - 一个按期保存的制作目录，包含素材清单、字幕、分镜、图片提示词和审核记录。
 - 一个已经安装进本机剪映草稿库的可编辑草稿。
-- 独立的视频、图片、旁白、BGM、音效、中英文字幕、书名和作者轨道。
+- 独立的视频、图片、旁白、BGM、音效、中文字幕、按需启用的英文字幕、书名和作者轨道。
 - `3:4`、`9:16`、`4:3` 三种可选画幅，以及随画幅自动换算的排版位置。
 
 ## 每期需要提供
@@ -47,13 +47,15 @@ ReadFlow Studio（读流工作室）是一套从 Obsidian 阅读知识库到可�
 3. 书名配音结束后，正文配音、正文 SRT 第一条和第一张分镜图紧接开始；缩小封面按模板进入。
 4. 书名和作者从书名配音结束后持续到视频结束。
 
-BGM、片头 MOV、快闪图片、机械音效、水滴音效和正文开头音效都是可选素材：存在即使用，缺失就跳过；路径存在但文件损坏时停止并报错。片头话术不再从 `materials` 读取固定文件，而是每期通过 `--intro-voice` 提供。替换同名可选素材后重新生成草稿，即可使用新文件，不需要修改代码。
+开场画面只选择一条路径：快闪图片优先，其次是片头 MOV，两者都不可用时由全画幅书封兜底。只有实际选中的开场素材会进入草稿；选中素材存在但损坏时停止并报错。
+
+BGM、机械音效、水滴音效和正文开头音效是可叠加的可选音频：素材存在时启用，缺失时跳过，存在但损坏时停止并报错。片头话术不再从 `materials` 读取固定文件，而是每期通过 `--intro-voice` 提供。替换同名可选素材后重新生成草稿，即可使用新文件，不需要修改代码。
 
 ## 字幕和排版
 
-- 中文、英文字幕是两个独立轨道；英文默认字号为 `5`，位于中文字幕下方。
-- 英文字幕只使用自己的文本，开始和结束时间强制复制对应中文字幕，避免双语错位。
-- 书名、作者、中英文字幕按画布高度比例定位：书名约 `49%`、作者约 `36%`、中文约 `-38%`、英文约 `-50%`。
+- 中文字幕始终使用独立轨道；启用英文字幕时再建立英文轨，英文默认字号为 `5`，位于中文字幕下方。
+- 启用英文字幕时，英文轨只使用自己的文本，开始和结束时间强制复制对应中文字幕，避免双语错位。
+- 书名、作者和中文字幕按画布高度比例定位；启用英文字幕时再计算英文位置。当前锚点约为书名 `49%`、作者 `36%`、中文 `-38%`、英文 `-50%`。
 - 切换 `3:4`、`9:16`、`4:3` 时自动重新计算位置，避免标题区和字幕区拥挤。
 - 位置与字体可在 `templates/jianying-draft/layouts.json` 中统一调整。
 
@@ -70,7 +72,7 @@ BGM、片头 MOV、快闪图片、机械音效、水滴音效和正文开头音�
 
 ## 第一次使用
 
-```bash
+```powershell
 npm run init
 npm run capcut:setup
 ```
@@ -81,23 +83,25 @@ npm run capcut:setup
 - 可选的片头 MOV、BGM、快闪图片和音效路径；不使用的素材可以留空或缺失。
 - CapCut Mate 本地服务参数。
 
+示例中的 `.readflow.local.json` 使用 `schemaVersion: 2`，它表示本机配置文件的结构；每期新生成的 `workflow.json` 使用 `schemaVersion: 3`，表示项目时间线结构。两者是独立 schema，不需要把本机配置版本改成 3。
+
 然后启动草稿服务：
 
-```bash
+```powershell
 npm run capcut:start
 ```
 
 ## 准备一期视频
 
-```bash
-npm run workflow:prepare -- \
-  --book "被讨厌的勇气" \
-  --intro-voice "/绝对路径/片头话术.mp3" \
-  --title-voice "/绝对路径/书名配音.mp3" \
-  --voice "/绝对路径/正文朗读.mp3" \
-  --srt "/绝对路径/中文字幕.srt" \
-  --srt-en "/绝对路径/英文字幕.srt" \
-  --aspect "3:4" \
+```powershell
+npm run workflow:prepare -- `
+  --book "被讨厌的勇气" `
+  --intro-voice "C:\素材\片头话术.mp3" `
+  --title-voice "C:\素材\书名配音.mp3" `
+  --voice "C:\素材\正文朗读.mp3" `
+  --srt "C:\素材\中文字幕.srt" `
+  --srt-en "C:\素材\英文字幕.srt" `
+  --aspect "3:4" `
   --scene-cue-counts "5,6,5,5,5"
 ```
 
@@ -105,17 +109,17 @@ npm run workflow:prepare -- \
 
 确认 `episodes/<项目名>/storyboard.md` 并补齐图片后，先执行干跑检查：
 
-```bash
+```powershell
 npm run workflow:draft -- --project "项目名" --dry-run
 ```
 
 确认无误后安装到剪映：
 
-```bash
-npm run workflow:draft -- \
-  --project "项目名" \
-  --install-to-jianying \
-  --jianying-dir "/剪映草稿库目录" \
+```powershell
+npm run workflow:draft -- `
+  --project "项目名" `
+  --install-to-jianying `
+  --jianying-dir "D:\剪映草稿" `
   --draft-name "自定义草稿名称"
 ```
 
@@ -125,7 +129,7 @@ npm run workflow:draft -- \
 
 - `.readflow.local.json`、`.readflow-state.json`、`.env`、`.tools/` 和 `episodes/` 都不会提交。
 - 公开仓库只保存代码、示例配置、模板参数和工作方法。
-- 固定 BGM、音效、字体、封面和生成图片需要使用者自行确认授权。
+- 可选 BGM、音效、字体、封面和生成图片需要使用者自行确认授权。
 - 本机旧版 Whisper/HyperFrames 文件可以继续保留用于历史项目，但已加入忽略规则，不属于 GitHub 发布内容。
 
 项目代码和自有文档采用 [Apache-2.0](LICENSE)；第三方素材继续遵循各自许可。
