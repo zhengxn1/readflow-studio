@@ -168,7 +168,9 @@ const fixedMaterials = {
   flashDir: resolveOptionalMaterial(config, "flashDir", { kind: "directory" }),
 };
 const flashImages = collectFlashImages(fixedMaterials.flashDir);
-const introVideoDurationUs = fixedMaterials.introVideo ? probeDurationUs(fixedMaterials.introVideo) : 0;
+const introVideoDurationUs = fixedMaterials.introVideo && flashImages.length === 0
+  ? probeDurationUs(fixedMaterials.introVideo)
+  : 0;
 const cues = parseSrt(fs.readFileSync(srtPath, "utf8"));
 validateBodyCues(cues, args.book);
 const englishCues = englishSrtPath ? parseSrt(fs.readFileSync(englishSrtPath, "utf8")) : [];

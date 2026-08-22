@@ -34,8 +34,10 @@ test("prepare and draft support a schema v3 project with optional opening assets
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "readflow-v3-"));
   const projectName = `workflow-v3-${process.pid}-${Date.now()}`;
   const bilingualProjectName = `${projectName}-bilingual`;
+  const flashProjectName = `${projectName}-flash`;
   const episodeDir = path.join(ROOT, "episodes", projectName);
   const bilingualEpisodeDir = path.join(ROOT, "episodes", bilingualProjectName);
+  const flashEpisodeDir = path.join(ROOT, "episodes", flashProjectName);
 
   try {
     const introVoice = path.join(tempDir, "intro.mp3");
@@ -45,6 +47,9 @@ test("prepare and draft support a schema v3 project with optional opening assets
     const bodySrt = path.join(tempDir, "body.srt");
     const englishSrt = path.join(tempDir, "body-en.srt");
     const configPath = path.join(tempDir, "config.json");
+    const flashConfigPath = path.join(tempDir, "flash-config.json");
+    const flashDir = path.join(tempDir, "flash");
+    const badIntroVideo = path.join(tempDir, "bad-intro.mov");
 
     createSilentMp3(introVoice, 2);
     createSilentMp3(titleVoice, 1.5);
@@ -87,6 +92,19 @@ test("prepare and draft support a schema v3 project with optional opening assets
         waterDropSfx: "missing-water-drop.mp3",
         textStartSfx: "missing-text-start.mp3",
         flashDir: "missing-flash-directory",
+      },
+      capcutMate: { baseUrl: "http://127.0.0.1:9001" },
+    }, null, 2)}\n`);
+    fs.mkdirSync(flashDir);
+    fs.copyFileSync(cover, path.join(flashDir, "flash.jpg"));
+    fs.writeFileSync(badIntroVideo, "");
+    fs.writeFileSync(flashConfigPath, `${JSON.stringify({
+      obsidian: { vaultPath: path.join(tempDir, "missing-vault"), wereadFolder: "missing-notes" },
+      defaults: { aspect: "3:4", requireEnglishSubtitles: false },
+      materials: {
+        root: tempDir,
+        introVideo: path.basename(badIntroVideo),
+        flashDir: path.basename(flashDir),
       },
       capcutMate: { baseUrl: "http://127.0.0.1:9001" },
     }, null, 2)}\n`);
@@ -213,6 +231,64 @@ test("prepare and draft support a schema v3 project with optional opening assets
     );
     assert.match(bilingualReviewNotes, /中英文字幕条数与时间一致/u);
     assert.doesNotMatch(bilingualReviewNotes, /本期未启用英文字幕/u);
+
+    const flashPrepareResult = spawnSync(process.execPath, [
+      "scripts/prepare-jianying-workflow.mjs",
+      "--book", "测试书",
+      "--author", "测试作者",
+      "--cover", cover,
+      "--intro-voice", introVoice,
+      "--title-voice", titleVoice,
+      "--voice", bodyVoice,
+      "--srt", bodySrt,
+      "--no-english",
+      "--project", flashProjectName,
+      "--config", flashConfigPath,
+    ], {
+      cwd: ROOT,
+      encoding: "utf8",
+      shell: false,
+    });
+    assert.equal(
+      flashPrepareResult.status,
+      0,
+      [flashPrepareResult.stdout, flashPrepareResult.stderr].filter(Boolean).join("\n"),
+    );
+    const flashWorkflow = JSON.parse(fs.readFileSync(
+      path.join(flashEpisodeDir, "workflow.json"),
+      "utf8",
+    ));
+    assert.equal(flashWorkflow.opening.flashImageCount > 0, true);
+    assert.equal(flashWorkflow.opening.introVideoDurationUs, 0);
+    const flashStoryboard = JSON.parse(fs.readFileSync(
+      path.join(flashEpisodeDir, flashWorkflow.generated.storyboard),
+      "utf8",
+    ));
+    for (const scene of flashStoryboard) {
+      fs.copyFileSync(cover, path.join(flashEpisodeDir, "images", scene.imageFile));
+    }
+    const flashDraftResult = spawnSync(process.execPath, [
+      "scripts/create-jianying-draft.mjs",
+      "--project", flashProjectName,
+      "--config", flashConfigPath,
+      "--dry-run",
+    ], {
+      cwd: ROOT,
+      encoding: "utf8",
+      shell: false,
+    });
+    assert.equal(
+      flashDraftResult.status,
+      0,
+      [flashDraftResult.stdout, flashDraftResult.stderr].filter(Boolean).join("\n"),
+    );
+    const flashDraftPlan = JSON.parse(fs.readFileSync(
+      path.join(flashEpisodeDir, "draft-plan.json"),
+      "utf8",
+    ));
+    assert.equal(flashDraftPlan.tracks.video.some((track) => track.includes("快闪素材")), true);
+    assert.equal(flashDraftPlan.tracks.video.some((track) => track.includes("片头 MOV")), false);
+    assert.equal(flashDraftPlan.sourceFiles.includes(badIntroVideo), false);
 
     const shiftedCaptions = JSON.parse(fs.readFileSync(
       path.join(episodeDir, workflow.generated.shiftedCaptions),
@@ -345,5 +421,6 @@ test("prepare and draft support a schema v3 project with optional opening assets
     fs.rmSync(tempDir, { recursive: true, force: true });
     fs.rmSync(episodeDir, { recursive: true, force: true });
     fs.rmSync(bilingualEpisodeDir, { recursive: true, force: true });
+    fs.rmSync(flashEpisodeDir, { recursive: true, force: true });
   }
 });
