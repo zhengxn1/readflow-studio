@@ -2,6 +2,10 @@ function numberedTracks(prefix, labels) {
   return labels.map((label, index) => `${prefix}${index + 1} ${label}`);
 }
 
+function isUsablePath(value) {
+  return typeof value === "string" && Boolean(value.trim());
+}
+
 function normalizeCoverFiles(coverFiles) {
   if (Array.isArray(coverFiles)) {
     return { full: coverFiles[0], cover: coverFiles[1] };
@@ -12,8 +16,9 @@ function normalizeCoverFiles(coverFiles) {
   };
 }
 
-export function compactPaths(paths) {
-  return [...new Set(paths.filter((value) => typeof value === "string" && value.trim()))];
+export function compactPaths(paths = []) {
+  const values = Array.isArray(paths) ? paths : [];
+  return [...new Set(values.filter(isUsablePath))];
 }
 
 export function normalizeDraftTimeline(workflow, shiftedCues = []) {
@@ -57,11 +62,13 @@ export function buildV3DraftPlan({
   const inputs = workflow.inputs || {};
   const bodyVoice = inputs.bodyVoice ?? inputs.voice;
   const covers = normalizeCoverFiles(coverFiles);
-  const flashFiles = (openingPlan?.flashSegments || []).map((segment) => segment?.filePath);
+  const scenes = Array.isArray(sceneFiles) ? sceneFiles : [];
+  const flashSegments = Array.isArray(openingPlan?.flashSegments) ? openingPlan.flashSegments : [];
+  const flashFiles = flashSegments.map((segment) => segment?.filePath);
   const selectedOpeningVideo = openingPlan?.mode === "video" ? openingPlan?.video?.filePath : undefined;
   const selectedFlashFiles = openingPlan?.mode === "flash" ? flashFiles : [];
-  const hasOpeningVideo = Boolean(openingPlan?.video?.filePath);
-  const hasFlashImages = flashFiles.some((filePath) => typeof filePath === "string" && filePath.trim());
+  const hasOpeningVideo = isUsablePath(selectedOpeningVideo);
+  const hasFlashImages = selectedFlashFiles.some(isUsablePath);
 
   const videoLabels = [];
   if (openingPlan?.mode === "video" && hasOpeningVideo) videoLabels.push("片头 MOV");
@@ -81,11 +88,11 @@ export function buildV3DraftPlan({
 
   const audioLabels = [];
   if (!introOnly) audioLabels.push("正文旁白");
-  if (fixedMaterials.bgm) audioLabels.push("背景音乐");
+  if (isUsablePath(fixedMaterials.bgm)) audioLabels.push("背景音乐");
   audioLabels.push("片头话术", "书名配音");
-  if (fixedMaterials.mechanicalSfx) audioLabels.push("机械音效");
-  if (fixedMaterials.waterDropSfx) audioLabels.push("水滴音效");
-  if (!introOnly && fixedMaterials.textStartSfx) audioLabels.push("正文开头音效");
+  if (isUsablePath(fixedMaterials.mechanicalSfx)) audioLabels.push("机械音效");
+  if (isUsablePath(fixedMaterials.waterDropSfx)) audioLabels.push("水滴音效");
+  if (!introOnly && isUsablePath(fixedMaterials.textStartSfx)) audioLabels.push("正文开头音效");
 
   return {
     schemaVersion: 2,
@@ -102,7 +109,7 @@ export function buildV3DraftPlan({
       ...selectedFlashFiles,
       covers.full,
       ...(!introOnly ? [covers.cover] : []),
-      ...(!introOnly ? sceneFiles : []),
+      ...(!introOnly ? scenes : []),
       inputs.introVoice,
       inputs.titleVoice,
       ...(!introOnly ? [bodyVoice] : []),

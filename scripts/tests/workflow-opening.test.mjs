@@ -10,13 +10,11 @@ import {
   resolveOptionalMaterial,
   validateBodyCues,
 } from "../lib/opening-workflow.mjs";
-
-const draftPlanModule = await import("../lib/draft-plan.mjs").catch(() => ({}));
-const {
+import {
   buildV3DraftPlan,
   compactPaths,
   normalizeDraftTimeline,
-} = draftPlanModule;
+} from "../lib/draft-plan.mjs";
 
 function createV3Workflow(fixedMaterials = {}) {
   return {
@@ -261,6 +259,101 @@ test("compactPaths 过滤非字符串和空串并稳定去重", () => {
     "   ",
     "second.png",
   ]), ["first.png", "second.png"]);
+});
+
+test("不可用的可选路径不生成轨道也不进入源文件", () => {
+  const plan = buildV3DraftPlan({
+    workflow: createV3Workflow({
+      bgm: "   ",
+      mechanicalSfx: null,
+      waterDropSfx: 42,
+      textStartSfx: "\t",
+    }),
+    openingPlan: {
+      mode: "video",
+      video: { filePath: "   ", start: 0, end: 2_000_000 },
+      coverFill: null,
+      flashSegments: [],
+    },
+    sceneFiles: ["scene.png"],
+    coverFiles: { full: "full-cover.png", cover: "cover.png" },
+  });
+
+  assert.equal(plan.tracks.video.some((name) => name.includes("片头 MOV")), false);
+  assert.deepEqual(plan.tracks.audio, ["A1 正文旁白", "A2 片头话术", "A3 书名配音"]);
+  assert.equal(plan.sourceFiles.some((value) => typeof value !== "string" || !value.trim()), false);
+});
+
+test("混合快闪片段只收集有效路径且仍生成快闪轨", () => {
+  const plan = buildV3DraftPlan({
+    workflow: createV3Workflow(),
+    openingPlan: {
+      mode: "flash",
+      video: null,
+      coverFill: null,
+      flashSegments: [
+        { filePath: null, start: 0, end: 1 },
+        { filePath: "   ", start: 1, end: 2 },
+        { filePath: 42, start: 2, end: 3 },
+        { filePath: "flash.png", start: 3, end: 4 },
+      ],
+    },
+    sceneFiles: [],
+    coverFiles: { full: "", cover: "" },
+  });
+
+  assert.equal(plan.tracks.video[0], "V1 快闪素材");
+  assert.deepEqual(plan.sourceFiles.filter((value) => value.includes("flash")), ["flash.png"]);
+});
+
+test("空集合输入统一按空数组处理", () => {
+  let emptyPaths;
+  let nullPaths;
+  assert.doesNotThrow(() => {
+    emptyPaths = compactPaths();
+    nullPaths = compactPaths(null);
+  });
+  assert.deepEqual(emptyPaths, []);
+  assert.deepEqual(nullPaths, []);
+
+  let plan;
+  assert.doesNotThrow(() => {
+    plan = buildV3DraftPlan({
+      workflow: createV3Workflow(),
+      openingPlan: { mode: "cover", video: null, coverFill: null, flashSegments: null },
+      sceneFiles: null,
+      coverFiles: null,
+    });
+  });
+  assert.deepEqual(plan.tracks.video, [
+    "V1 全画幅书籍封面",
+    "V2 正文分镜图片",
+    "V3 缩小书籍封面",
+  ]);
+});
+
+test("所有可选音频启用时轨道编号保持连续", () => {
+  const plan = buildV3DraftPlan({
+    workflow: createV3Workflow({
+      bgm: "bgm.mp3",
+      mechanicalSfx: "mechanical.mp3",
+      waterDropSfx: "water.mp3",
+      textStartSfx: "text-start.mp3",
+    }),
+    openingPlan: { mode: "cover", video: null, coverFill: null, flashSegments: [] },
+    sceneFiles: [],
+    coverFiles: { full: "full-cover.png", cover: "cover.png" },
+  });
+
+  assert.deepEqual(plan.tracks.audio, [
+    "A1 正文旁白",
+    "A2 背景音乐",
+    "A3 片头话术",
+    "A4 书名配音",
+    "A5 机械音效",
+    "A6 水滴音效",
+    "A7 正文开头音效",
+  ]);
 });
 
 test("schema v3 时间线直接归一化三段语音边界", () => {
