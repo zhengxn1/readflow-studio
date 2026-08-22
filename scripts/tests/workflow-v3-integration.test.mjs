@@ -208,6 +208,46 @@ test("prepare and draft support a schema v3 project with optional opening assets
       [badAudioResult.stdout, badAudioResult.stderr].filter(Boolean).join("\n"),
       new RegExp(`无法读取素材时长|${path.basename(badBgm)}`, "u"),
     );
+
+    workflow.fixedMaterials.bgm = removedOptionalMaterials.bgm;
+    fs.writeFileSync(workflowPath, `${JSON.stringify(workflow, null, 2)}\n`);
+    const removedBodyFiles = [
+      path.join(episodeDir, workflow.inputs.voice),
+      path.join(episodeDir, workflow.generated.storyboard),
+      path.join(episodeDir, workflow.generated.shiftedCaptions),
+    ];
+    if (workflow.generated.shiftedEnglishCaptions) {
+      removedBodyFiles.push(path.join(episodeDir, workflow.generated.shiftedEnglishCaptions));
+    }
+    for (const filePath of removedBodyFiles) fs.rmSync(filePath, { force: true });
+
+    const introOnlyResult = spawnSync(process.execPath, [
+      "scripts/create-jianying-draft.mjs",
+      "--project", projectName,
+      "--config", configPath,
+      "--intro-only",
+      "--dry-run",
+    ], {
+      cwd: ROOT,
+      encoding: "utf8",
+      shell: false,
+    });
+    assert.equal(
+      introOnlyResult.status,
+      0,
+      [introOnlyResult.stdout, introOnlyResult.stderr].filter(Boolean).join("\n"),
+    );
+    const introOnlyPlan = JSON.parse(fs.readFileSync(path.join(episodeDir, "draft-plan.json"), "utf8"));
+    assert.deepEqual(introOnlyPlan.tracks.video, ["V1 全画幅书籍封面"]);
+    assert.deepEqual(introOnlyPlan.tracks.text, ["T1 书名"]);
+    assert.deepEqual(introOnlyPlan.tracks.audio, ["A1 片头话术", "A2 书名配音"]);
+    assert.equal(
+      Object.values(introOnlyPlan.tracks).flat().some((track) => track.includes("正文")),
+      false,
+    );
+    for (const removedPath of removedBodyFiles) {
+      assert.equal(introOnlyPlan.sourceFiles.includes(removedPath), false);
+    }
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
     fs.rmSync(episodeDir, { recursive: true, force: true });

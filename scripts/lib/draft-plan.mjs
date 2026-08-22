@@ -47,6 +47,64 @@ export function normalizeDraftTimeline(workflow, shiftedCues = []) {
   };
 }
 
+export function buildV3AudioSegments({
+  timeline,
+  durations,
+  materials = {},
+  introOnly = false,
+}) {
+  const timelineEndUs = introOnly ? timeline.bodyAudioStartUs : timeline.totalEndUs;
+  const segments = [
+    {
+      key: "introVoice",
+      start: 0,
+      end: timeline.introEndUs,
+      sourceDurationUs: durations.introVoice,
+    },
+    {
+      key: "titleVoice",
+      start: timeline.titleStartUs,
+      end: timeline.titleEndUs,
+      sourceDurationUs: durations.titleVoice,
+    },
+  ];
+
+  if (!introOnly) {
+    segments.push({
+      key: "bodyVoice",
+      start: timeline.bodyAudioStartUs,
+      end: Math.min(timelineEndUs, timeline.bodyAudioStartUs + durations.bodyVoice),
+      sourceDurationUs: durations.bodyVoice,
+    });
+  }
+  if (isUsablePath(materials.mechanicalSfx)) {
+    segments.push({
+      key: "mechanicalSfx",
+      start: 0,
+      end: Math.min(timeline.introEndUs, durations.mechanicalSfx),
+      sourceDurationUs: durations.mechanicalSfx,
+    });
+  }
+  if (isUsablePath(materials.waterDropSfx)) {
+    segments.push({
+      key: "waterDropSfx",
+      start: timeline.titleStartUs,
+      end: Math.min(timelineEndUs, timeline.titleStartUs + durations.waterDropSfx),
+      sourceDurationUs: durations.waterDropSfx,
+    });
+  }
+  if (!introOnly && isUsablePath(materials.textStartSfx)) {
+    segments.push({
+      key: "textStartSfx",
+      start: timeline.bodyAudioStartUs,
+      end: Math.min(timelineEndUs, timeline.bodyAudioStartUs + durations.textStartSfx),
+      sourceDurationUs: durations.textStartSfx,
+    });
+  }
+
+  return segments;
+}
+
 export function buildV3DraftPlan({
   workflow,
   openingPlan,

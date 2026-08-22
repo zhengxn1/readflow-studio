@@ -11,6 +11,7 @@ import {
   validateBodyCues,
 } from "../lib/opening-workflow.mjs";
 import {
+  buildV3AudioSegments,
   buildV3DraftPlan,
   compactPaths,
   normalizeDraftTimeline,
@@ -365,6 +366,74 @@ test("schema v3 时间线直接归一化三段语音边界", () => {
     firstBodySentenceStartUs: 3_000_000,
     totalEndUs: 11_000_000,
   });
+});
+
+test("schema v3 音频片段限制机械音效并对齐书名和正文边界", () => {
+  const segments = buildV3AudioSegments({
+    timeline: {
+      introEndUs: 2_000_000,
+      titleStartUs: 2_000_000,
+      titleEndUs: 3_000_000,
+      bodyAudioStartUs: 3_000_000,
+      totalEndUs: 10_000_000,
+    },
+    durations: {
+      introVoice: 2_000_000,
+      titleVoice: 1_000_000,
+      bodyVoice: 7_000_000,
+      mechanicalSfx: 5_000_000,
+      waterDropSfx: 2_000_000,
+      textStartSfx: 500_000,
+    },
+    materials: {
+      mechanicalSfx: "mechanical.mp3",
+      waterDropSfx: "water.mp3",
+      textStartSfx: "text-start.mp3",
+    },
+    introOnly: false,
+  });
+
+  assert.deepEqual(segments, [
+    { key: "introVoice", start: 0, end: 2_000_000, sourceDurationUs: 2_000_000 },
+    { key: "titleVoice", start: 2_000_000, end: 3_000_000, sourceDurationUs: 1_000_000 },
+    { key: "bodyVoice", start: 3_000_000, end: 10_000_000, sourceDurationUs: 7_000_000 },
+    { key: "mechanicalSfx", start: 0, end: 2_000_000, sourceDurationUs: 5_000_000 },
+    { key: "waterDropSfx", start: 2_000_000, end: 4_000_000, sourceDurationUs: 2_000_000 },
+    { key: "textStartSfx", start: 3_000_000, end: 3_500_000, sourceDurationUs: 500_000 },
+  ]);
+});
+
+test("schema v3 intro-only 音频片段排除正文和正文开头音效", () => {
+  const segments = buildV3AudioSegments({
+    timeline: {
+      introEndUs: 2_000_000,
+      titleStartUs: 2_000_000,
+      titleEndUs: 3_000_000,
+      bodyAudioStartUs: 3_000_000,
+      totalEndUs: 10_000_000,
+    },
+    durations: {
+      introVoice: 2_000_000,
+      titleVoice: 1_000_000,
+      bodyVoice: 7_000_000,
+      mechanicalSfx: 1_000_000,
+      waterDropSfx: 500_000,
+      textStartSfx: 500_000,
+    },
+    materials: {
+      mechanicalSfx: "mechanical.mp3",
+      waterDropSfx: "water.mp3",
+      textStartSfx: "text-start.mp3",
+    },
+    introOnly: true,
+  });
+
+  assert.deepEqual(segments.map((segment) => segment.key), [
+    "introVoice",
+    "titleVoice",
+    "mechanicalSfx",
+    "waterDropSfx",
+  ]);
 });
 
 test("schema v2 时间线从旧字幕恢复书名和正文切换点", () => {

@@ -8,7 +8,7 @@ import { cuesToCapcut } from "./lib/srt.mjs";
 import { startMediaServer } from "./lib/media-server.mjs";
 import { CapcutMateClient } from "./lib/capcut-mate-client.mjs";
 import { buildOpeningVisualPlan, collectFlashImages } from "./lib/opening-workflow.mjs";
-import { buildV3DraftPlan, normalizeDraftTimeline } from "./lib/draft-plan.mjs";
+import { buildV3AudioSegments, buildV3DraftPlan, normalizeDraftTimeline } from "./lib/draft-plan.mjs";
 
 const ROOT = process.cwd();
 const args = parseCliArgs(process.argv.slice(2));
@@ -64,11 +64,15 @@ const workflowPath = path.join(episodeDir, "workflow.json");
 if (!fs.existsSync(workflowPath)) throw new Error(`找不到工作流项目：${workflowPath}`);
 const workflow = readJson(workflowPath);
 const isV3 = Number(workflow.schemaVersion) >= 3;
+const introOnly = args["intro-only"] === true;
+const readBodyArtifacts = !isV3 || !introOnly;
 const resolveEpisodeAsset = (value) => value && (path.isAbsolute(value) ? value : path.join(episodeDir, value));
 const layout = loadLayout(ROOT, workflow.aspect);
-const scenes = readJson(resolveEpisodeAsset(workflow.generated.storyboard));
-const shiftedCues = readJson(resolveEpisodeAsset(workflow.generated.shiftedCaptions));
-const shiftedEnglishPath = resolveEpisodeAsset(workflow.generated.shiftedEnglishCaptions);
+const scenes = readBodyArtifacts ? readJson(resolveEpisodeAsset(workflow.generated.storyboard)) : [];
+const shiftedCues = readBodyArtifacts ? readJson(resolveEpisodeAsset(workflow.generated.shiftedCaptions)) : [];
+const shiftedEnglishPath = readBodyArtifacts
+  ? resolveEpisodeAsset(workflow.generated.shiftedEnglishCaptions)
+  : "";
 const shiftedEnglishCues = shiftedEnglishPath && fs.existsSync(shiftedEnglishPath)
   ? readJson(shiftedEnglishPath)
   : [];
@@ -100,7 +104,6 @@ const introVoicePath = isV3
 const titleVoicePath = isV3 ? resolveEpisodeAsset(workflow.inputs.titleVoice) : "";
 const bookCoverPath = resolveEpisodeAsset(workflow.inputs.cover);
 const fullBookCoverPath = resolveEpisodeAsset(workflow.inputs.fullCover) || bookCoverPath;
-const introOnly = args["intro-only"] === true;
 const draftTimeline = normalizeDraftTimeline(workflow, shiftedCues);
 const timelineEndUs = isV3
   ? (introOnly ? workflow.timeline.bodyStartUs : workflow.totalDurationUs)
@@ -131,9 +134,12 @@ const allFiles = [
 
 const hasFilePath = (filePath) => typeof filePath === "string" && Boolean(filePath.trim());
 const optionalDurationUs = (filePath) => (hasFilePath(filePath) ? probeDurationUs(filePath) : 0);
+const currentIntroVideoDurationUs = isV3 && !flashImages.length && hasFilePath(fixedMaterials.introVideo)
+  ? probeDurationUs(fixedMaterials.introVideo)
+  : 0;
 const audioDurations = isV3
   ? {
-      bodyVoice: probeDurationUs(bodyVoicePath),
+      bodyVoice: introOnly ? 0 : probeDurationUs(bodyVoicePath),
       introVoice: probeDurationUs(introVoicePath),
       titleVoice: probeDurationUs(titleVoicePath),
       bgm: optionalDurationUs(fixedMaterials.bgm),
@@ -149,6 +155,14 @@ const audioDurations = isV3
       waterDropSfx: probeDurationUs(fixedMaterials.waterDropSfx),
       textStartSfx: probeDurationUs(fixedMaterials.textStartSfx),
     };
+const v3AudioSegments = isV3
+  ? buildV3AudioSegments({
+      timeline: draftTimeline,
+      durations: audioDurations,
+      materials: fixedMaterials,
+      introOnly,
+    })
+  : [];
 
 const intro = isV3 ? null : {
   videoDurationUs: Number(workflow.intro.videoDurationUs || audioDurations.introVoice),
@@ -164,7 +178,7 @@ const openingPlan = isV3
   ? buildOpeningVisualPlan({
       flashImages,
       introVideo: fixedMaterials.introVideo,
-      introVideoDurationUs: workflow.opening.introVideoDurationUs,
+      introVideoDurationUs: currentIntroVideoDurationUs,
       introEndUs: draftTimeline.introEndUs,
     })
   : null;
@@ -244,7 +258,7 @@ try {
         video_url: mediaServer.urlFor(openingPlan.video.filePath),
         start: openingPlan.video.start,
         end: openingPlan.video.end,
-        duration: workflow.opening.introVideoDurationUs,
+        duration: currentIntroVideoDurationUs,
         volume: 0,
       }]);
     }
@@ -375,15 +389,31 @@ try {
   }
 
   if (isV3) {
-    if (!introOnly) {
-      await client.addAudios(draftUrl, [capAudio(
-        mediaServer.urlFor(bodyVoicePath),
-        draftTimeline.bodyAudioStartUs,
-        audioDurations.bodyVoice,
-        Math.min(timelineEndUs, draftTimeline.bodyAudioStartUs + audioDurations.bodyVoice),
-        Number(d.bodyVoiceVolume ?? 1),
-      )]);
-    }
+    const audioPaths = {
+      introVoice: introVoicePath,
+      titleVoice: titleVoicePath,
+      bodyVoice: bodyVoicePath,
+      mechanicalSfx: fixedMaterials.mechanicalSfx,
+      waterDropSfx: fixedMaterials.waterDropSfx,
+      textStartSfx: fixedMaterials.textStartSfx,
+    };
+    const audioVolumes = {
+      introVoice: Number(d.introVoiceVolume ?? 1),
+      titleVoice: Number(d.titleVoiceVolume ?? d.bodyVoiceVolume ?? 1),
+      bodyVoice: Number(d.bodyVoiceVolume ?? 1),
+      mechanicalSfx: Number(d.sfxVolume ?? 1),
+      waterDropSfx: Number(d.sfxVolume ?? 1),
+      textStartSfx: Number(d.sfxVolume ?? 1),
+    };
+    const addV3AudioSegment = async (segment) => client.addAudios(draftUrl, [capAudio(
+      mediaServer.urlFor(audioPaths[segment.key]),
+      segment.start,
+      segment.sourceDurationUs,
+      segment.end,
+      audioVolumes[segment.key],
+    )]);
+    const bodySegment = v3AudioSegments.find((segment) => segment.key === "bodyVoice");
+    if (bodySegment) await addV3AudioSegment(bodySegment);
     if (hasFilePath(fixedMaterials.bgm)) {
       const bgmInfos = [];
       for (let start = 0; start < timelineEndUs; start += audioDurations.bgm) {
@@ -397,31 +427,8 @@ try {
       }
       await client.addAudios(draftUrl, bgmInfos);
     }
-    await client.addAudios(draftUrl, [capAudio(
-      mediaServer.urlFor(introVoicePath), 0, audioDurations.introVoice,
-      draftTimeline.introEndUs, Number(d.introVoiceVolume ?? 1),
-    )]);
-    await client.addAudios(draftUrl, [capAudio(
-      mediaServer.urlFor(titleVoicePath), draftTimeline.titleStartUs, audioDurations.titleVoice,
-      draftTimeline.titleEndUs, Number(d.titleVoiceVolume ?? d.bodyVoiceVolume ?? 1),
-    )]);
-    if (hasFilePath(fixedMaterials.mechanicalSfx)) {
-      await client.addAudios(draftUrl, [capAudio(
-        mediaServer.urlFor(fixedMaterials.mechanicalSfx), 0, audioDurations.mechanicalSfx,
-        Math.min(timelineEndUs, audioDurations.mechanicalSfx), Number(d.sfxVolume ?? 1),
-      )]);
-    }
-    if (hasFilePath(fixedMaterials.waterDropSfx)) {
-      await client.addAudios(draftUrl, [capAudio(
-        mediaServer.urlFor(fixedMaterials.waterDropSfx), draftTimeline.titleStartUs, audioDurations.waterDropSfx,
-        Math.min(timelineEndUs, draftTimeline.titleStartUs + audioDurations.waterDropSfx), Number(d.sfxVolume ?? 1),
-      )]);
-    }
-    if (!introOnly && hasFilePath(fixedMaterials.textStartSfx)) {
-      await client.addAudios(draftUrl, [capAudio(
-        mediaServer.urlFor(fixedMaterials.textStartSfx), draftTimeline.bodyAudioStartUs, audioDurations.textStartSfx,
-        Math.min(timelineEndUs, draftTimeline.bodyAudioStartUs + audioDurations.textStartSfx), Number(d.sfxVolume ?? 1),
-      )]);
+    for (const segment of v3AudioSegments) {
+      if (segment.key !== "bodyVoice") await addV3AudioSegment(segment);
     }
   } else {
     await client.addAudios(draftUrl, [capAudio(
